@@ -1,0 +1,52 @@
+# Shared security job, called by the branch-push and pull-request workflows.
+#
+# - Dependencies: npm audit fails on any high or critical advisory.
+# - Secrets: gitleaks scans the whole git history. (The gitleaks CLI is free
+#   for any account. Only the gitleaks GitHub Action needs an organization license.)
+# - Code: ESLint's security and no-unsanitized rules run in the Lint job, and
+#   the CSP, cookie, CSRF, and auth-gate behavior is tested in the use case tests.
+name: Security
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: npm audit (high and critical)
+        run: npm audit --audit-level=high
+
+      - name: Lockfile is in sync with package.json
+        run: npm ci --ignore-scripts
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # every commit, so a secret added and then removed is still caught
+
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: 8.28.0
+          GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
+        run: |
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum --check
+          tar xzf gitleaks.tgz gitleaks
+          ./gitleaks git --redact --no-banner --verbose .

@@ -1,0 +1,55 @@
+# Shared lint job, called by the branch-push and pull-request workflows.
+name: Lint
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: TypeScript (tsc)
+        run: npm run typecheck
+
+      - name: TypeScript and JavaScript (ESLint, including security rules)
+        run: npm run lint:js
+
+      - name: CSS (Stylelint)
+        run: npm run lint:css
+
+      - name: Formatting (Prettier)
+        run: npm run format:check
+
+      - name: Security headers match public/_headers
+        run: npm run check:headers
+
+      - name: .env.example documents every variable
+        run: |
+          for name in $(node --input-type=module -e "import { ENV_VARS } from './src/shared/env.ts'; console.log(ENV_VARS.map((v) => v.name).join(' '))"); do
+            grep -q "^${name}=" .env.example || { echo "::error file=.env.example::${name} is not documented in .env.example"; exit 1; }
+          done
+
+      - name: GitHub Actions workflows (actionlint)
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+          ACTIONLINT_SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+        run: |
+          curl -sSfL -o actionlint.tgz "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tgz" | sha256sum --check
+          tar xzf actionlint.tgz actionlint
+          ./actionlint -color

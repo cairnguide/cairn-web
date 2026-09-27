@@ -1,0 +1,49 @@
+# Runs every check on pull requests into main, and again after each merge.
+# The "All checks passed" job is the one required status check. The ruleset
+# in .github/rulesets/protect-main.json blocks merging until it succeeds.
+name: Pull request
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pull-request-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  security:
+    uses: ./.github/workflows/security.yml
+
+  tests:
+    uses: ./.github/workflows/tests.yml
+    with:
+      use-cases: true
+
+  all-checks-passed:
+    name: All checks passed
+    if: always()
+    needs: [lint, security, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for r in $RESULTS; do
+            if [[ "$r" != "success" ]]; then
+              echo "::error::At least one required job did not succeed ($r)."
+              exit 1
+            fi
+          done

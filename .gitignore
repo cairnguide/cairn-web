@@ -1,0 +1,24 @@
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Cloudflare / Wrangler
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# Environment files. Only the documented template is committed.
+.env
+.env.*
+!.env.example
+
+# Test output
+playwright-report/
+test-results/
+blob-report/

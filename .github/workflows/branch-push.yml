@@ -1,0 +1,28 @@
+# Runs on every push to a branch other than main: the fast checks, so problems
+# show up before a pull request is opened. The browser use case tests run on
+# the pull request.
+name: Branch push
+
+on:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: branch-push-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  security:
+    uses: ./.github/workflows/security.yml
+
+  tests:
+    uses: ./.github/workflows/tests.yml
+    with:
+      use-cases: false

@@ -1,0 +1,3 @@
+# The app is not a search landing page. cairn-site is.
+User-agent: *
+Disallow: /

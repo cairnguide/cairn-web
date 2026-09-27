@@ -1,0 +1,51 @@
+// Cloudflare Workers configuration for cairn-web.
+// Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+//
+// Same hosting model as cairn-site (Workers Static Assets), plus a small
+// Worker script that owns sign-in and talks to the Cairn API for the browser
+// (the "backend for frontend" pattern). Tokens never reach browser JavaScript.
+//
+// Runtime settings are NOT written here. They are environment variables and
+// secrets, documented in .env.example and provisioned by the deployment
+// pipeline (see README.md, "Environment variables").
+{
+  "name": "cairn-web",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-09-01",
+
+  "assets": {
+    // Built by `npm run build` (Vite). Hashed files live under /assets/.
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    // Every unknown path serves index.html so the client router can show the
+    // right screen (or its own not-found screen).
+    "not_found_handling": "single-page-application",
+    // These paths go through the Worker before any static file is served:
+    // sign-in, the API proxy, runtime config, and every page that needs a
+    // signed-in person. Everything else is a plain static file.
+    "run_worker_first": [
+      "/auth/*",
+      "/api/*",
+      "/config.json",
+      "/setup",
+      "/setup/*",
+      "/cases/*",
+      "/settings/*",
+    ],
+  },
+
+  // Keep variables and secrets that the deployment pipeline set in the
+  // Cloudflare dashboard (or with `npm run env:push`) when deploying.
+  "keep_vars": true,
+
+  "observability": {
+    "enabled": true,
+    // Request logs only. The Worker never logs tokens, emails, or names.
+    "head_sampling_rate": 1,
+  },
+
+  // Required by `npx wrangler preview`, the deploy command for non-production
+  // branches in Workers Builds (same as cairn-site). It can stay empty.
+  // https://developers.cloudflare.com/workers/previews/configuration/#wrangler-configuration-file
+  "previews": {},
+}
