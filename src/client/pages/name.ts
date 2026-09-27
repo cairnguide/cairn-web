@@ -28,7 +28,7 @@ import {
 } from '../components/controls.ts';
 import { routeForScreen } from '../onboarding.ts';
 import type { Page } from '../router.ts';
-import { canSpeakLocally, createLocalRecognizer } from '../speech.ts';
+import { canSpeakLocally, createLocalRecognizer, mightSpeakLocally } from '../speech.ts';
 import { ensureOnboarding, setOnboarding } from '../state.ts';
 import { checkPreferredName } from '../validation.ts';
 
@@ -136,19 +136,28 @@ export const namePage: Page = async ({ url, navigate }) => {
   const speakArea = h('div', { class: 'speak-area', hidden: true });
   const speakButton = h(
     'button',
-    { type: 'button', class: 'button-secondary button-inline', hidden: true },
+    { type: 'button', class: 'button-secondary button-inline', hidden: !mightSpeakLocally() },
     svgIcon(icons.mic, 22),
     h('span', {}, 'Speak'),
   );
-  void canSpeakLocally().then((ok) => {
-    speakButton.hidden = !ok;
-  });
+  const speakNotice = h('p', { class: 'field-hint', role: 'status' });
 
   const typeRow = h('div', { class: 'input-row' }, input, speakButton, sendButton);
 
   speakButton.addEventListener('click', () => {
-    const recognizer = createLocalRecognizer();
-    if (!recognizer) return;
+    void startSpeaking();
+  });
+
+  const startSpeaking = async () => {
+    // Only now ask the browser whether recognition can run on this device.
+    const recognizer = (await canSpeakLocally()) ? createLocalRecognizer() : null;
+    if (!recognizer) {
+      speakButton.hidden = true;
+      speakNotice.textContent =
+        "Speaking isn't available on this device, so nothing was recorded. Please type your answer.";
+      input.focus();
+      return;
+    }
     const heard = h('p', { class: 'heard-text' });
     const status = h('p', { class: 'listening' }, 'Listening. Speak when you are ready.');
     let latest = '';
@@ -220,7 +229,7 @@ export const namePage: Page = async ({ url, navigate }) => {
     speakArea.hidden = false;
     recognizer.start();
     stop.focus();
-  });
+  };
 
   const form = h(
     'form',
@@ -238,6 +247,7 @@ export const namePage: Page = async ({ url, navigate }) => {
       h('label', { for: 'preferred-name' }, 'Your answer'),
       typeRow,
       speakArea,
+      speakNotice,
       h(
         'span',
         { id: hintId, class: 'field-hint' },
