@@ -31,6 +31,13 @@ export const test = base.extend<{ consoleErrors: string[] }>({
         if (message.type() === 'error') errors.push(message.text());
       });
       page.on('pageerror', (error) => errors.push(error.message));
+      // The real speech recognition service differs between browser builds and can
+      // crash headless Chromium. Tests remove it, and install a fake when they need one.
+      await page.addInitScript(() => {
+        const w = window as unknown as Record<string, unknown>;
+        delete w.SpeechRecognition;
+        delete w.webkitSpeechRecognition;
+      });
       await mockControl({ reset: true });
       await use(errors);
       // The browser logs every 4xx API answer (401 signed out, 409 account exists). The

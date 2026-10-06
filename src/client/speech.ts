@@ -85,6 +85,7 @@ interface RecognitionInstance extends EventTarget {
 
 interface RecognitionConstructor {
   new (): RecognitionInstance;
+  prototype: object;
   available?: (options: { langs: string[]; processLocally: boolean }) => Promise<string>;
 }
 
@@ -93,6 +94,20 @@ function recognitionClass(): RecognitionConstructor | null {
   const ctor = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as
     RecognitionConstructor | undefined;
   return ctor ?? null;
+}
+
+/**
+ * A cheap check with no side effects: does this browser offer on-device
+ * recognition at all? Used to decide whether to show Speak. The real check,
+ * canSpeakLocally(), only runs when the person taps Speak, because asking the
+ * browser's speech service can be slow and, in some headless builds, crashes
+ * the page.
+ */
+export function mightSpeakLocally(): boolean {
+  const Ctor = recognitionClass();
+  return Boolean(
+    Ctor && typeof Ctor.available === 'function' && 'processLocally' in Ctor.prototype,
+  );
 }
 
 /** True only when the browser confirms recognition will run on this device. */
