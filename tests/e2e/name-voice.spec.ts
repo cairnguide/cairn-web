@@ -104,3 +104,68 @@ test('the Speak button is hidden when this device cannot turn speech into text o
   await throughAcknowledgments(page);
   await expect(page.getByRole('button', { name: 'Speak' })).toBeHidden();
 });
+
+test('Speak turns speech into text on the device, and nothing is sent until confirmed', async ({
+  page,
+}) => {
+  // A fake on-device recognizer that "hears" Dee.
+  await page.addInitScript(() => {
+    class FakeRecognition extends EventTarget {
+      static available() {
+        return Promise.resolve('available');
+      }
+      lang = '';
+      interimResults = false;
+      continuous = false;
+      start() {
+        setTimeout(() => {
+          const result = Object.assign([{ transcript: 'Dee' }], { isFinal: true });
+          this.dispatchEvent(Object.assign(new Event('result'), { results: [result] }));
+          this.dispatchEvent(new Event('end'));
+        }, 50);
+      }
+      stop() {
+        this.dispatchEvent(new Event('end'));
+      }
+    }
+    Object.defineProperty(FakeRecognition.prototype, 'processLocally', {
+      value: false,
+      writable: true,
+    });
+    (window as unknown as Record<string, unknown>).SpeechRecognition = FakeRecognition;
+  });
+  await throughAcknowledgments(page);
+  await page.getByRole('button', { name: 'Speak' }).click();
+  await expect(page.locator('.heard-text')).toHaveText('Dee');
+  await expect(page.getByText('The recording is never kept.').first()).toBeVisible();
+  let { api } = await mockLog();
+  expect(api.some((c) => c.path === '/v1/onboarding/preferred-name')).toBe(false);
+
+  await page.getByRole('button', { name: 'That is right, send it' }).click();
+  await expect(page).toHaveURL(/\/setup\/voice$/);
+  ({ api } = await mockLog());
+  expect(api.find((c) => c.path === '/v1/onboarding/preferred-name')?.body).toEqual({
+    preferred_name: 'Dee',
+  });
+});
+
+test('Speak explains itself and records nothing when on-device recognition is unavailable', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    class CloudOnly extends EventTarget {
+      static available() {
+        return Promise.resolve('unavailable');
+      }
+    }
+    Object.defineProperty(CloudOnly.prototype, 'processLocally', { value: false, writable: true });
+    (window as unknown as Record<string, unknown>).SpeechRecognition = CloudOnly;
+  });
+  await throughAcknowledgments(page);
+  await page.getByRole('button', { name: 'Speak' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: "Speaking isn't available" }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Speak' })).toBeHidden();
+  await expect(page.getByLabel('Your answer')).toBeFocused();
+});

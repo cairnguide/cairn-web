@@ -66,6 +66,7 @@ describe('Listen (on-device text to speech only)', () => {
 
 describe('Speak (on-device speech recognition only)', () => {
   it('is unavailable without on-device support', async () => {
+    expect(speech.mightSpeakLocally()).toBe(false);
     expect(await speech.canSpeakLocally()).toBe(false);
     expect(speech.createLocalRecognizer()).toBeNull();
 
@@ -94,6 +95,10 @@ describe('Speak (on-device speech recognition only)', () => {
       }
     }
     vi.stubGlobal('SpeechRecognition', Local);
+    // processLocally is an instance field here, so the cheap check can't see it.
+    expect(speech.mightSpeakLocally()).toBe(false);
+    Object.defineProperty(Local.prototype, 'processLocally', { value: false, writable: true });
+    expect(speech.mightSpeakLocally()).toBe(true);
     expect(await speech.canSpeakLocally()).toBe(true);
     const recognizer = speech.createLocalRecognizer()!;
     const instance = Local.last!;
