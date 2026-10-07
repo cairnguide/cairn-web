@@ -69,6 +69,18 @@ function redirect(res: ServerResponse, location: string): void {
   res.end();
 }
 
+function safeLocalRedirectTarget(target: string | null): string {
+  if (!target) return '/';
+  try {
+    const base = new URL(BASE);
+    const parsed = new URL(target, BASE);
+    if (parsed.origin !== base.origin) return '/';
+    return `${parsed.pathname}${parsed.search}${parsed.hash}` || '/';
+  } catch {
+    return '/';
+  }
+}
+
 async function readBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -199,7 +211,7 @@ async function handleAuth0(req: IncomingMessage, res: ServerResponse, url: URL):
   }
   if (url.pathname === '/v2/logout') {
     lastIdentity = null;
-    redirect(res, url.searchParams.get('returnTo') ?? '/');
+    redirect(res, safeLocalRedirectTarget(url.searchParams.get('returnTo')));
     return true;
   }
   return false;
