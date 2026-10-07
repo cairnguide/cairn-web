@@ -29,3 +29,29 @@ describe('matchRoute', () => {
     expect(matchRoute(table, '/')?.route.path).toBe('/');
   });
 });
+
+describe('popstate', () => {
+  it('re-renders on back and forward, but not when only the hash changes (skip link)', async () => {
+    const { startRouter } = await import('../../../src/client/router.ts');
+    let renders = 0;
+    const counted = () =>
+      Promise.resolve(() => {
+        renders += 1;
+        return null;
+      });
+    window.history.replaceState(null, '', '/');
+    startRouter(document.createElement('div'), [{ path: '/', page: counted }], counted);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(renders).toBe(1);
+
+    window.history.pushState(null, '', '/#main');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(renders).toBe(1);
+
+    window.history.pushState(null, '', '/other');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(renders).toBe(2);
+  });
+});

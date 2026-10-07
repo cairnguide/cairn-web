@@ -51,6 +51,8 @@ let routes: Route[] = [];
 let root: HTMLElement;
 let notFound: () => Promise<Page>;
 let renderToken = 0;
+/** The path and query of the page on screen, so a hash-only change doesn't re-render it. */
+let renderedPath = '';
 /** The first page load leaves focus alone so Tab starts at the skip link. */
 let firstRender = true;
 
@@ -117,6 +119,7 @@ function errorView(error: unknown): View {
 export async function render(): Promise<void> {
   const token = ++renderToken;
   const url = new URL(window.location.href);
+  renderedPath = url.pathname + url.search;
 
   // The Worker refuses protected pages without a session. This covers
   // in-app navigation, which doesn't go back to the Worker.
@@ -178,7 +181,12 @@ export function startRouter(
     if (isTimedOut((event as CustomEvent<unknown>).detail)) void signOut('timeout');
   });
   notFound = fallback;
-  window.addEventListener('popstate', () => void render());
+  window.addEventListener('popstate', () => {
+    // Following an in-page link (the skip link's #main) changes only the hash. That is
+    // not a new page: re-rendering would replace the page under the person's focus.
+    if (window.location.pathname + window.location.search === renderedPath) return;
+    void render();
+  });
   document.addEventListener('click', (event) => {
     if (
       event.defaultPrevented ||
