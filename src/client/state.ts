@@ -5,6 +5,7 @@
  */
 import { ApiError, api, request } from './api.ts';
 import type {
+  AccountResponse,
   IntakeSession,
   IntakeTurnResponse,
   OnboardingResponse,
@@ -13,6 +14,7 @@ import type {
   WelcomeResponse,
 } from './api-types.ts';
 import { assertSafeUrl } from './dom.ts';
+import { clearBreakMemory } from './take-a-break.ts';
 
 export interface PublicConfig {
   privacy_policy_url: string;
@@ -155,6 +157,25 @@ export function markSubscribePromptSeen(): void {
 }
 
 let flash: string | null = null;
+let aiLabel: string | null = null;
+
+/** Shown when the API can't be asked. The words the account spec requires in spirit. */
+const AI_LABEL_FALLBACK = 'Cairn is an AI guide, not a person.';
+
+/**
+ * copy.ai_persistent_label, from the account (AccountOut.ai_label). Shown in
+ * every chat view once the AI notice is agreed to (UC-REG-09 AC03). Asked
+ * for once per visit.
+ */
+export async function loadAiLabel(): Promise<string> {
+  if (aiLabel) return aiLabel;
+  try {
+    aiLabel = (await api.get<AccountResponse>('/v1/me')).account.ai_label ?? AI_LABEL_FALLBACK;
+  } catch {
+    return AI_LABEL_FALLBACK;
+  }
+  return aiLabel;
+}
 
 /** A one-line read-back to show on the next screen ("Saved. A confirmation went to ..."). */
 export function setFlash(message: string | null): void {
@@ -169,6 +190,7 @@ export function takeFlash(): string | null {
 
 /** Forgets everything about the person kept in memory (sign-out, deletion). */
 export function clearPersonalState(): void {
+  clearBreakMemory();
   onboarding = null;
   careLevel = 1;
   intakeSessions.clear();
@@ -176,6 +198,7 @@ export function clearPersonalState(): void {
   handoffRole = null;
   subscribePromptSeen = false;
   flash = null;
+  aiLabel = null;
 }
 
 /** Only ever navigates to an http(s) URL the Worker or API handed back (Auth0, Stripe). */

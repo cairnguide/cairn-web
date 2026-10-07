@@ -21,6 +21,7 @@ import {
 import { stopSpeaking } from '../speech.ts';
 import { getConfig, getSession, getWelcome, signOut } from '../state.ts';
 import { newTabLink } from './controls.ts';
+import { beforeBreak } from '../take-a-break.ts';
 
 export interface ShellOptions {
   /** Index into SETUP_STEPS to show the step list, or null for none. */
@@ -28,6 +29,8 @@ export interface ShellOptions {
   content: Child;
   /** What Take a break does on this page. Defaults to opening /break. */
   onTakeABreak?: () => void;
+  /** Break screens replace Take a break with their own resume action. */
+  hideTakeABreak?: boolean;
 }
 
 const BREAK_LABEL = 'Take a break';
@@ -45,12 +48,34 @@ function supportLabel(): string {
 function takeABreakControl(onTakeABreak?: () => void): HTMLElement {
   const content = [svgIcon(icons.pause, 20), h('span', {}, breakLabel())];
   if (onTakeABreak) {
-    return h('button', { type: 'button', class: 'control', onClick: onTakeABreak }, content);
+    const handler = onTakeABreak;
+    return h(
+      'button',
+      {
+        type: 'button',
+        class: 'control',
+        onClick: () => {
+          beforeBreak();
+          handler();
+        },
+      },
+      content,
+    );
   }
-  const from = window.location.pathname;
+  return breakLink('control', content);
+}
+
+/** A link to the break screen for where the person is, coming back to this view. */
+function breakLink(className: string, content: Child): HTMLAnchorElement {
+  const from = window.location.pathname + window.location.search;
   return h(
     'a',
-    { class: 'control', href: `/break?from=${encodeURIComponent(from)}`, 'data-route': '' },
+    {
+      class: className,
+      href: `/break?from=${encodeURIComponent(from)}`,
+      'data-route': '',
+      onClick: beforeBreak,
+    },
     content,
   );
 }
@@ -97,7 +122,7 @@ function readAloudButton(): HTMLButtonElement {
   return button;
 }
 
-export function siteHeader(onTakeABreak?: () => void): HTMLElement {
+export function siteHeader(onTakeABreak?: () => void, hideTakeABreak = false): HTMLElement {
   const session = getSession();
   const config = getConfig();
   return h(
@@ -125,7 +150,7 @@ export function siteHeader(onTakeABreak?: () => void): HTMLElement {
       h(
         'nav',
         { class: 'controls', 'aria-label': 'Always available' },
-        takeABreakControl(onTakeABreak),
+        hideTakeABreak ? null : takeABreakControl(onTakeABreak),
         h(
           'a',
           { class: 'control', href: '/support', 'data-route': '' },
@@ -157,7 +182,7 @@ export function siteHeader(onTakeABreak?: () => void): HTMLElement {
   );
 }
 
-export function setupSteps(current: SetupStepIndex): HTMLElement {
+export function setupSteps(current: SetupStepIndex, hideTakeABreak = false): HTMLElement {
   return h(
     'nav',
     { class: 'setup-steps', 'aria-label': 'Account setup steps' },
@@ -186,12 +211,7 @@ export function setupSteps(current: SetupStepIndex): HTMLElement {
       }),
     ),
     h('p', { class: 'setup-note' }, 'You can stop at any step. Your progress is saved.'),
-    h(
-      'a',
-      { class: 'need-a-moment', href: '/break?from=%2Fsetup', 'data-route': '' },
-      svgIcon(icons.pause, 20),
-      breakLabel(),
-    ),
+    hideTakeABreak ? null : breakLink('need-a-moment', [svgIcon(icons.pause, 20), breakLabel()]),
   );
 }
 
@@ -227,7 +247,7 @@ export function shell(options: ShellOptions): HTMLElement {
     'div',
     { class: 'page' },
     h('a', { class: 'skip-link', href: '#main' }, 'Skip to main content'),
-    siteHeader(options.onTakeABreak),
+    siteHeader(options.onTakeABreak, options.hideTakeABreak),
     body,
     siteFooter(),
   );

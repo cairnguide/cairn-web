@@ -37,6 +37,7 @@ import {
 } from '../components/blocks.ts';
 import { actions, cairnMessage, routeLink } from '../components/controls.ts';
 import type { Page } from '../router.ts';
+import { caseBreak } from './intake.ts';
 import { getHandoffRole, rememberTurn, setFlash, setHandoffRole, takeFlash } from '../state.ts';
 
 /** The relationship question, before the API has been asked anything (cairn-core messages.py). */
@@ -200,6 +201,7 @@ export const caseDeletePage: Page = async ({ params, navigate }) => {
   return {
     title: 'Delete this case',
     step: null,
+    onTakeABreak: caseBreak(id, navigate),
     content: page(
       'Delete this case',
       backLink('/home', 'Back to home'),

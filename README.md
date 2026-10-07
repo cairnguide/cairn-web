@@ -15,6 +15,7 @@ touch targets, a way to pause on every screen, and the 988 crisis line on every 
 
 - [What is in this repository](#what-is-in-this-repository)
 - [Screens and routes](#screens-and-routes)
+- [Use case specs and the gap check](#use-case-specs-and-the-gap-check)
 - [How it works](#how-it-works)
 - [Security and privacy](#security-and-privacy)
 - [Getting started](#getting-started)
@@ -121,6 +122,69 @@ back with the next one.
 - Signed in: **Settings** and **Sign out**. After 4 minutes 40 seconds with no activity a dialog offers "Stay signed
   in", and at 5 minutes the person is signed out and told why (UC-REG-19, D-20). No countdown numbers are shown.
 - The footer's Privacy Policy, Terms of Use, "Cairn is an AI guide, not a human", and the 988 line.
+
+## Use case specs and the gap check
+
+The product's use case specs live in the shared "Death Boom/Use Cases" folder. Build only from the highest version of
+each file (the folder's `docs/README.md` lists the older ones as superseded). On 2026-10-07 the current files were
+checked byte for byte against the copies in cairn-core `database/docs/`, and they are identical:
+
+| Area                        | Current spec file                                               | Version |
+| --------------------------- | --------------------------------------------------------------- | ------- |
+| Signup and account          | `account creation/cairn-account-use-cases-v32.json`             | 3.2.0   |
+| Case creation               | `case creation/cairn-case-creation-use-cases-v32.json`          | 3.2.0   |
+| Support and crisis          | `crisis prevention/cairn-support-crisis-plan-v32.json`          | 3.2.0   |
+| Take a break                | `journeys/cairn-take-a-break-use-cases-v32.json`                | 3.2.0   |
+| Subscription                | `subscribe/cairn-subscription-use-cases-v33.json`               | 3.3.0   |
+| Journey: expected, facility | `journeys/cairn-journey-J-EXPECTED-FACILITY-use-cases-v11.json` | 1.1.0   |
+| Journey: sudden, unexpected | `journeys/cairn-journey-J-SUDDEN-UNEXPECTED-use-cases-v11.json` | 1.1.0   |
+
+The web app was then checked against every active line of `docs/testing/acceptance-criteria.csv` (300 checks) and
+the Take a break `view_inventory` (45 views). These gaps were found and closed in the web app:
+
+| Check                              | What changed                                                                                                                                                                                                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UC-BRK-01 AC02, views V-41 to V-45 | Break screens (S-01 to S-06, and the draft pause and rest choices inside a case) no longer show Take a break. Each shows its own actions, with Sign out on S-02, S-02b, S-03, and S-05. Welcome back (S-07) shows it again.             |
+| UC-BRK-01, views V-26 to V-40      | Take a break on every view of a case (review, preview, keep in touch, first task, journey, status, tasks, delete) saves where the person left off first (`POST /v1/cases/{id}/take-a-break`), and Keep going returns to that same view. |
+| View V-41                          | The rest choices inside a case always offer "Never mind, keep going".                                                                                                                                                                   |
+| UC-BRK-01 AC08                     | Partly typed text is kept, in memory only, and put back when the person returns to the same view.                                                                                                                                       |
+| UC-BRK-01 AC09                     | Take a break while listening stops listening and throws away what was heard. Nothing is sent. Changing pages does the same.                                                                                                             |
+| UC-BRK-01 AC10                     | Taking a break from a delete confirmation cancels it. Resuming never returns to the confirmation.                                                                                                                                       |
+| UC-BRK-01 AC05                     | Tested at 320 CSS pixels wide: Take a break is visible, at least 44 by 44 pixels, with no sideways scrolling.                                                                                                                           |
+| AC-26-03, UC-SUB-21 AC01           | At care levels 3 and 4, Settings shows no subscription section and the subscription page has a neutral title, so no screen has billing words.                                                                                           |
+| UC-REG-09 AC03                     | The AI guide label comes from the API (`AccountOut.ai_label`) and shows in every chat view, including Ask Cairn about my account.                                                                                                       |
+| UC-CASE-22                         | Speak uses the API's screen reader label, shows the API's first-use note the first time, and its "permission denied" words when speech can't run.                                                                                       |
+| UC-JEF-02, UC-JSU-02               | A step's place in the journey (`waypoint`) shows on the journey, the preview, and the task.                                                                                                                                             |
+
+These are covered by `tests/e2e/take-a-break.spec.ts`, `responsive.spec.ts`, and `tests/unit/client/take-a-break.test.ts`.
+
+### Gaps that need cairn-core or Auth0 first
+
+The web app can't close these until the API (or Auth0 setup) supports them:
+
+1. **Journey steps as a conversation (UC-JEF-02, UC-JSU-02).** The specs show each step with an acknowledgment, a
+   summary, one question, and an offer of what's next, phase by phase from W0. `TaskDetail` carries a title, summary,
+   why now, and notes, but no acknowledgment, question, or next offer.
+2. **The employment question (UC-JEF-03, UC-JSU-03).** "Was your loved one working, or did they have a pension or
+   retirement plan from a job?" asked once when week 4 is near. There is no endpoint to ask or answer it, and both
+   journey specs ask cairn-core to set `had_employer_plan` false on a no.
+3. **The certified copy estimate (UC-JEF-05, UC-JSU-05).** Steps needing a certified copy, plus 2. Not in the task or
+   status responses.
+4. **Tell close family and friends (UC-JEF-06), and the medical examiner step (UC-JSU-06).** Help making a short
+   list, and keeping the case number in one place, need a decision on what may be stored (UC-JEF-06 AC01 says no
+   names or contact details) and an endpoint.
+5. **States without verified content (UC-JEF-04 AC02, UC-JSU-04 AC02).** The app shows whatever note the API sends.
+   The API should send the "no verified steps for that state" note.
+6. **The magic link landing page (UC-REG-04).** The email link should open a Cairn page with a Continue button, so a
+   mail scanner can't use the link, plus "Send a new link" and "signed in on another device". Auth0's passwordless
+   email currently goes straight to Auth0. This needs an Auth0 email template that links to a Cairn page, and a Worker
+   route that continues the sign-in.
+7. **The method used last, shown first (UC-REG-18).** Auth0's Universal Login remembers the last method. Doing it in
+   Cairn would mean keeping the sign-in method in the browser, which the privacy rules here avoid.
+8. **Text typed when the 5-minute sign-out happens (UC-REG-19).** The spec saves it as a draft answer where the screen
+   allows. There is no draft answer endpoint. The app keeps typed text only across a break.
+9. **Closing a case (UC-SUB-01 AC05, UC-SUB-11 AC02).** Read-only users should be able to close a case. The API has
+   a `closed` case status but no endpoint to close one.
 
 ## How it works
 
@@ -470,6 +534,7 @@ These run the real built client and the real Worker (`wrangler dev`), with Auth0
 | `cases.spec.ts`           | UC-CASE-01 to 09 questions, own words masked and read back, level 2 after skips, levels 3 and 4, draft break, UC-CASE-16, 17, review and Edit, preview, keep in touch, Start journey, first task, UC-10, UC-11, UC-13, UC-END-13 |
 | `security.spec.ts`        | Edge auth gate, proxy refusals, open redirect, cookie flags, no tokens in page JavaScript, headers                                                                                                                               |
 | `accessibility.spec.ts`   | axe WCAG 2.2 AA on every setup screen and the main signed-in screens, in light and dark mode, skip link, keyboard, text size, read aloud                                                                                         |
+| `take-a-break.spec.ts`    | Take a break on every view: break screens replace it, case views save and return, typed text kept, listening stopped, delete cancelled, no billing words at care levels 3 and 4, the API's AI label in chat views                |
 | `responsive.spec.ts`      | Phone width with no sideways scrolling, setup and signed-in screens                                                                                                                                                              |
 
 Every use case test also fails on any browser console error, which includes CSP and Trusted Types violations.
@@ -584,6 +649,7 @@ Report security problems privately, as described in [SECURITY.md](SECURITY.md).
 - [openapi-typescript](https://openapi-ts.dev/) (generates `src/client/api-schema.ts`)
 - Stripe: [Checkout](https://docs.stripe.com/payments/checkout), [Customer portal](https://docs.stripe.com/customer-management)
 - MDN: [Push API](https://developer.mozilla.org/docs/Web/API/Push_API), [Notification.requestPermission()](https://developer.mozilla.org/docs/Web/API/Notification/requestPermission_static), [`<dialog>`](https://developer.mozilla.org/docs/Web/HTML/Element/dialog)
+- [WCAG 2.2 success criterion 1.4.10, Reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html), [2.5.3, Label in Name](https://www.w3.org/WAI/WCAG22/Understanding/label-in-name.html), and [2.5.8, Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html)
 - [WCAG 2.2 success criterion 2.2.1, Timing Adjustable](https://www.w3.org/WAI/WCAG22/Understanding/timing-adjustable.html)
 - Marketing site and hosting pattern: [cairnguide/cairn-site](https://github.com/cairnguide/cairn-site)
 - Cloudflare: [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/),

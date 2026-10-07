@@ -29,6 +29,7 @@ import type {
   Option,
   ProposedAnswer,
   Question,
+  ScreenControls,
 } from '../api-types.ts';
 import { h, svgIcon, type Child } from '../dom.ts';
 import { icons } from '../icons.ts';
@@ -54,7 +55,15 @@ import {
 import { isFieldKey, questionFor, rememberQuestion } from '../intake-fields.ts';
 import type { Page, PageContext, View } from '../router.ts';
 import { canSpeakLocally, createLocalRecognizer, mightSpeakLocally } from '../speech.ts';
-import { getCareLevel, getIntakeSession, rememberTurn, takeTurn } from '../state.ts';
+import {
+  getCareLevel,
+  getIntakeSession,
+  loadAiLabel,
+  rememberTurn,
+  signOut,
+  takeTurn,
+} from '../state.ts';
+import { rememberBreakView, takeBreakView } from '../take-a-break.ts';
 
 /** A case turn or the resume screen, which share what is drawn. */
 type Turn = Partial<IntakeTurnResponse> &
@@ -82,7 +91,12 @@ interface Ctx {
   id: string;
   page: PageContext;
   errors: HTMLElement;
+  /** Screen reader labels and speech copy from the API (ScreenControls). */
+  controls?: ScreenControls;
 }
+
+/** Speak's first-use note is shown once per visit (UC-CASE-22). */
+let speakExplained = false;
 
 function session(id: string): IntakeSession | null {
   return getIntakeSession(id);
@@ -110,6 +124,44 @@ function post(
 function keepGoing(ctx: Ctx, button: HTMLButtonElement | null): void {
   post(ctx, '/intake/continue', { session: session(ctx.id) }, button);
 }
+
+/**
+ * The resume action on a break screen: back to the view the person took the
+ * break from, with nothing lost (UC-BRK-01 step 5). From the conversation
+ * itself, the next question.
+ */
+function resumeAfterBreak(ctx: Ctx, button: HTMLButtonElement | null): void {
+  const back = takeBreakView(ctx.id);
+  if (back && back !== `/cases/${seg(ctx.id)}`) ctx.page.navigate(back);
+  else keepGoing(ctx, button);
+}
+
+/**
+ * Take a break from any view of a case (Take a break spec V-26 to V-40). One
+ * select, no confirmation. The API saves where the person left off and says
+ * which break screen fits: the draft pause, or the rest choices on a journey.
+ */
+export function takeCaseBreak(caseId: string, navigate: PageContext['navigate']): Promise<void> {
+  rememberBreakView(caseId, window.location.pathname + window.location.search);
+  return api
+    .post<IntakeTurnResponse>(path(caseId, '/take-a-break'), { session: getIntakeSession(caseId) })
+    .then((turn) => {
+      rememberTurn(caseId, turn);
+      navigate(`/cases/${seg(caseId)}`);
+    });
+}
+
+/** A Take a break handler for any view of a case. A failure shows as a calm message on the break page. */
+export function caseBreak(caseId: string, navigate: PageContext['navigate']): () => void {
+  return () => {
+    takeCaseBreak(caseId, navigate).catch(() => {
+      navigate(`/break?from=${encodeURIComponent(window.location.pathname)}`);
+    });
+  };
+}
+
+/** Steps that are break screens: they replace Take a break with their own resume action. */
+const BREAK_STEPS = new Set(['paused', 'choose_rest', 'resting']);
 
 function answer(
   ctx: Ctx,
@@ -151,7 +203,13 @@ function ownWordsForm(ctx: Ctx, label: string, prefill = ''): HTMLElement {
   const notice = h('p', { class: 'field-hint', role: 'status' });
   const speakButton = h(
     'button',
-    { type: 'button', class: 'button-secondary button-inline', hidden: !mightSpeakLocally() },
+    {
+      type: 'button',
+      class: 'button-secondary button-inline',
+      hidden: !mightSpeakLocally(),
+      // The API's screen reader label, which starts with the visible word (WCAG 2.5.3).
+      'aria-label': ctx.controls?.speak ?? null,
+    },
     svgIcon(icons.mic, 22),
     h('span', {}, 'Speak'),
   );
@@ -200,11 +258,17 @@ async function listen(
   if (!recognizer) {
     button.hidden = true;
     notice.textContent =
+      ctx.controls?.speak_permission_denied ??
       "Speaking isn't available on this device, so nothing was recorded. Please type instead.";
     input.focus();
     return;
   }
   let latest = '';
+  // The first time Speak is used, the API's note says what happens to the voice (UC-CASE-22).
+  if (!speakExplained && ctx.controls?.speak_first_use) {
+    notice.after(h('p', { class: 'fine-print' }, ctx.controls.speak_first_use));
+  }
+  speakExplained = true;
   notice.textContent = 'Listening. Speak when you are ready.';
   recognizer.onText = (text) => {
     latest = text;
@@ -730,13 +794,15 @@ function nextStepBlock(ctx: Ctx, turn: Turn): Child {
     case 'draft_saved':
     case 'death_not_yet':
       return [
+        // The draft pause (S-03) is a break screen: its resume action replaces Take a break.
         h('p', { class: 'lede' }, step.prompt),
         optionButtons(
           step.options,
           (option, button) => {
             switch (option.value) {
               case 'keep_going':
-                keepGoing(ctx, button);
+                if (step.action === 'paused') resumeAfterBreak(ctx, button);
+                else keepGoing(ctx, button);
                 return;
               case 'something_else':
                 ctx.page.navigate('/home');
@@ -758,12 +824,20 @@ function nextStepBlock(ctx: Ctx, turn: Turn): Child {
           },
           { primaryFirst: true },
         ),
-        actions(routeLink('/home', 'Go to your home screen')),
+        actions(
+          routeLink('/home', 'Go to your home screen'),
+          step.action === 'paused' ? textButton('Sign out', () => void signOut()) : null,
+        ),
       ];
-    case 'choose_rest':
+    case 'choose_rest': {
+      // The rest choices (S-04) always offer a way back (view V-41: "Never mind, keep going").
+      const options = step.options ?? [];
+      const withWayBack = options.some((o) => !REST_CHOICES.has(o.value))
+        ? options
+        : [...options, { value: 'keep_going', label: 'Never mind, keep going' }];
       return [
         h('p', { class: 'lede' }, step.prompt),
-        optionButtons(step.options, (option, button) => {
+        optionButtons(withWayBack, (option, button) => {
           if (REST_CHOICES.has(option.value))
             post(
               ctx,
@@ -771,9 +845,10 @@ function nextStepBlock(ctx: Ctx, turn: Turn): Child {
               { rest_choice: option.value, session: session(ctx.id) },
               button,
             );
-          else keepGoing(ctx, button);
+          else resumeAfterBreak(ctx, button);
         }),
       ];
+    }
     case 'resting':
       return [
         h('p', { class: 'lede' }, step.prompt),
@@ -781,12 +856,13 @@ function nextStepBlock(ctx: Ctx, turn: Turn): Child {
           if (option.value === 'resume' || option.value === 'back') {
             void attempt(button, ctx.errors, async () => {
               await api.del(withQuery('/v1/me/break', { care_level: getCareLevel() }));
-              keepGoing(ctx, null);
+              resumeAfterBreak(ctx, null);
             });
           } else {
             ctx.page.navigate('/home');
           }
         }),
+        actions(textButton('Sign out', () => void signOut())),
       ];
     case 'review':
       return [
@@ -886,9 +962,10 @@ function draftTools(ctx: Ctx, turn: Turn): Child {
   );
 }
 
-function turnView(ctx: Ctx, turn: Turn): View {
+function turnView(ctx: Ctx, turn: Turn, aiLabel: string): View {
   const level = turn.care_level ?? getCareLevel();
   const crisisFirst = level === 4;
+  ctx.controls = turn.controls;
   return {
     title: turn.case.status === 'draft' ? 'Starting a case' : 'Your case',
     step: null,
@@ -896,6 +973,7 @@ function turnView(ctx: Ctx, turn: Turn): View {
       // One select, no confirmation. Saves where the person left off first.
       post(ctx, '/take-a-break', { session: session(ctx.id) }, null);
     },
+    hideTakeABreak: BREAK_STEPS.has(turn.next_step.action),
     content: h(
       'div',
       { class: 'content conversation-page' },
@@ -903,7 +981,7 @@ function turnView(ctx: Ctx, turn: Turn): View {
       h(
         'div',
         { class: 'conversation-tools' },
-        h('span', { class: 'ai-label' }, 'Cairn is an AI guide, not a person.'),
+        h('span', { class: 'ai-label' }, aiLabel),
         readThisToMe(turn.read_aloud),
       ),
       crisisFirst ? supportList(turn.support) : null,
@@ -952,6 +1030,9 @@ function editView(ctx: Ctx, field: FieldKey): View {
   return {
     title: 'Change an answer',
     step: null,
+    onTakeABreak: () => {
+      void attempt(null, ctx.errors, () => takeCaseBreak(ctx.id, ctx.page.navigate));
+    },
     content: h(
       'div',
       { class: 'content conversation-page' },
@@ -969,8 +1050,9 @@ export const intakePage: Page = async (page) => {
   const edit = page.url.searchParams.get('edit');
   if (isFieldKey(edit)) return editView(ctx, edit);
 
+  const aiLabel = await loadAiLabel();
   const kept = takeTurn(id);
-  if (kept) return turnView(ctx, kept);
+  if (kept) return turnView(ctx, kept, aiLabel);
 
   // Opening the case: for a draft, the resume turn (UC-CASE-10).
   const opened = await api.get<CaseResponse>(withQuery(path(id), { care_level: getCareLevel() }));
@@ -978,5 +1060,5 @@ export const intakePage: Page = async (page) => {
     page.navigate(`/cases/${seg(id)}/journey`, { replace: true });
     return null;
   }
-  return turnView(ctx, opened);
+  return turnView(ctx, opened, aiLabel);
 };

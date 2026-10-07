@@ -20,17 +20,26 @@ import { api, withQuery } from '../api.ts';
 import type { BreakResponse, Option } from '../api-types.ts';
 import { h, replaceChildren } from '../dom.ts';
 import { attempt, errorSlot, optionButtons, paragraphs } from '../components/blocks.ts';
-import { actions, cairnMessage, routeLink } from '../components/controls.ts';
+import { actions, cairnMessage, routeLink, textButton } from '../components/controls.ts';
 import type { Page, PageContext, View } from '../router.ts';
-import { getCareLevel, getSession } from '../state.ts';
+import { getCareLevel, getSession, signOut } from '../state.ts';
 
-/** Only same-site plain paths are used to go back. */
+/**
+ * Only same-site plain paths (with a simple query) are used to go back. A
+ * delete confirmation is never returned to: a break there cancels the
+ * deletion (UC-BRK-01 AC10), so the person goes back to the page before it.
+ */
 function safeFrom(url: URL): string {
   const from = url.searchParams.get('from') ?? '';
-  return /^\/[A-Za-z0-9/_-]*$/.test(from) && !from.startsWith('//') && !from.startsWith('/break')
-    ? from
-    : '';
+  const [path = '', query, extra] = from.split('?');
+  if (extra !== undefined || !/^\/[A-Za-z0-9/_-]*$/.test(path)) return '';
+  if (query !== undefined && !/^[A-Za-z0-9=&_-]*$/.test(query)) return '';
+  if (from.startsWith('//') || from.startsWith('/break')) return '';
+  return from.endsWith('/delete') ? from.slice(0, -'/delete'.length) : from;
 }
+
+/** Break screens that show Sign out with their resume action (Take a break spec, screens). */
+const WITH_SIGN_OUT = new Set(['S-02', 'S-02b', 'S-03', 'S-05']);
 
 let shown: BreakResponse | null = null;
 
@@ -153,8 +162,15 @@ function breakView(screen: BreakResponse, ctx: PageContext, from: string): View 
       choicesArea,
       errors,
       screen.quiet_988_line ? h('p', { class: 'fine-print' }, screen.quiet_988_line) : null,
-      actions(routeLink('/support', screen.support_resources_label)),
+      actions(
+        routeLink('/support', screen.support_resources_label),
+        signedIn && WITH_SIGN_OUT.has(screen.screen)
+          ? textButton('Sign out', () => void signOut())
+          : null,
+      ),
     ),
+    // Every break screen but Welcome back replaces Take a break with its own actions.
+    hideTakeABreak: screen.screen !== 'S-07',
   };
 }
 

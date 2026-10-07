@@ -40,3 +40,17 @@ test('home, the journey, a task, and the status table fit a phone', async ({ pag
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expectNoHorizontalScroll(page);
 });
+
+test('Take a break stays reachable at 320 CSS pixels wide (UC-BRK-01 AC05)', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await signedInHome(page, { activeCase: true });
+  await expectNoHorizontalScroll(page);
+  const control = page
+    .getByRole('navigation', { name: 'Always available' })
+    .getByRole('link', { name: 'Take a break' });
+  await expect(control).toBeVisible();
+  const box = await control.boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+  expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(320);
+});

@@ -123,4 +123,30 @@ describe('Speak (on-device speech recognition only)', () => {
     recognizer.stop();
     expect(instance.stop).toHaveBeenCalled();
   });
+
+  it('Take a break discards what was heard: no text and no end callback (UC-BRK-01 AC09)', () => {
+    class Local extends EventTarget {
+      static available = vi.fn(() => Promise.resolve('available'));
+      processLocally = false;
+      lang = '';
+      interimResults = false;
+      continuous = false;
+      start = vi.fn();
+      stop = vi.fn(() => {
+        this.dispatchEvent(new Event('end'));
+      });
+    }
+    vi.stubGlobal('SpeechRecognition', Local);
+    const recognizer = speech.createLocalRecognizer()!;
+    const onText = vi.fn();
+    const onEnd = vi.fn();
+    recognizer.onText = onText;
+    recognizer.onEnd = onEnd;
+    recognizer.start();
+    speech.abortListening();
+    expect(onEnd).not.toHaveBeenCalled();
+    expect(onText).not.toHaveBeenCalled();
+    // Nothing is listening any more, so a second abort does nothing.
+    speech.abortListening();
+  });
 });

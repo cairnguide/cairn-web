@@ -44,6 +44,7 @@ import {
 } from '../components/blocks.ts';
 import { actions, cairnMessage, primaryButton, routeLink } from '../components/controls.ts';
 import type { Page } from '../router.ts';
+import { caseBreak } from './intake.ts';
 import { getCareLevel, getIntakeSession, takeFlash } from '../state.ts';
 
 function casePath(id: string, rest = ''): string {
@@ -96,6 +97,7 @@ function taskLink(caseId: string, task: TaskSummary): HTMLElement {
       ? h('span', { class: 'fine-print' }, "Probably doesn't apply. Open it if it does.")
       : null,
     task.due_on ? h('span', { class: 'fine-print' }, `Due ${formatDate(task.due_on)}`) : null,
+    task.waypoint ? h('span', { class: 'fine-print' }, task.waypoint) : null,
   );
 }
 
@@ -130,6 +132,7 @@ export const reviewPage: Page = async ({ params, navigate }) => {
   return {
     title: 'Review what you shared',
     step: null,
+    onTakeABreak: caseBreak(id, navigate),
     content: page(
       'Review what you shared',
       readThisToMe(review.read_aloud),
@@ -164,6 +167,7 @@ function previewTask(task: PreviewTask): HTMLElement {
     ' ',
     statusPill(task.status, task.status_label),
     h('p', { class: 'fine-print' }, task.plain_summary),
+    task.waypoint ? h('p', { class: 'fine-print' }, task.waypoint) : null,
     task.attorney_line ? h('p', { class: 'fine-print' }, task.attorney_line) : null,
     notesList(task.notes),
   );
@@ -245,6 +249,7 @@ export const previewPage: Page = async ({ params, navigate }) => {
   return {
     title: 'The journey that fits',
     step: null,
+    onTakeABreak: caseBreak(id, navigate),
     content: widePage(
       'The journey that fits',
       readThisToMe(preview.read_aloud),
@@ -322,6 +327,7 @@ export const keepInTouchPage: Page = async ({ params, navigate }) => {
   return {
     title: 'How I keep in touch',
     step: null,
+    onTakeABreak: caseBreak(id, navigate),
     content: page(
       'How I keep in touch',
       readThisToMe(kit.read_aloud),
@@ -367,6 +373,7 @@ export const firstTaskPage: Page = ({ params, navigate }) => {
   return {
     title: 'Your journey has started',
     step: null,
+    onTakeABreak: caseBreak(id, navigate),
     content: page(
       'Your journey has started',
       readThisToMe(started.read_aloud),
@@ -429,6 +436,7 @@ export const journeyPage: Page = async ({ params, navigate }) => {
     return {
       title: 'Resting',
       step: null,
+      onTakeABreak: caseBreak(id, navigate),
       content: page(
         'Resting',
         notesList(journey.notes),
@@ -462,6 +470,7 @@ export const journeyPage: Page = async ({ params, navigate }) => {
   return {
     title: 'Your journey',
     step: null,
+    onTakeABreak: caseBreak(id, navigate),
     content: widePage(
       'Your journey',
       flash ? h('p', { class: 'note', role: 'status' }, flash) : null,
@@ -510,7 +519,7 @@ export const journeyPage: Page = async ({ params, navigate }) => {
 
 // ------------------------------------------------------------------ status (UC-13)
 
-export const statusPage: Page = async ({ params }) => {
+export const statusPage: Page = async ({ params, navigate }) => {
   const id = params.id ?? '';
   const status = await api.get<CaseStatusResponse>(
     withQuery(casePath(id, '/status'), { care_level: getCareLevel() }),
@@ -520,6 +529,7 @@ export const statusPage: Page = async ({ params }) => {
   return {
     title: 'Everything in one view',
     step: null,
+    onTakeABreak: caseBreak(id, navigate),
     content: widePage(
       'Everything in one view',
       backLink(pageHref(id, '/journey'), 'Back to the journey'),

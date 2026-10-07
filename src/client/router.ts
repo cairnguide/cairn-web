@@ -12,7 +12,8 @@ import { autoReadAloud, errorBanner } from './components/controls.ts';
 import { shell } from './components/layout.ts';
 import type { SetupStepIndex } from './onboarding.ts';
 import { isProtectedPath } from '../shared/paths.ts';
-import { stopSpeaking } from './speech.ts';
+import { abortListening, stopSpeaking } from './speech.ts';
+import { restoreTyped } from './take-a-break.ts';
 import { getSession, signOut } from './state.ts';
 
 export interface View {
@@ -25,6 +26,11 @@ export interface View {
    * conversations pass their own, which saves where they left off first.
    */
   onTakeABreak?: () => void;
+  /**
+   * Break screens show their own resume action instead of Take a break
+   * (Take a break spec view_inventory V-41 to V-43 and V-45).
+   */
+  hideTakeABreak?: boolean;
 }
 
 export interface PageContext {
@@ -140,14 +146,17 @@ export async function render(): Promise<void> {
 
   document.title = `${view.title} · Cairn`;
   stopSpeaking();
+  abortListening();
   replaceChildren(
     root,
     shell({
       step: view.step ?? null,
       content: view.content,
       ...(view.onTakeABreak ? { onTakeABreak: view.onTakeABreak } : {}),
+      hideTakeABreak: view.hideTakeABreak === true,
     }),
   );
+  restoreTyped(root);
   window.scrollTo(0, 0);
   const heading = root.querySelector<HTMLElement>('main h1');
   if (heading) {

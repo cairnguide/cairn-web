@@ -42,6 +42,7 @@ import {
   uid,
 } from '../components/controls.ts';
 import type { Page } from '../router.ts';
+import { caseBreak } from './intake.ts';
 import { statusPill } from './journey.ts';
 
 const STATUS_CHOICES: { value: TaskStatus; label: string }[] = [
@@ -120,6 +121,8 @@ function guidance(task: TaskDetail): HTMLElement {
     h('div', { class: 'option-row' }, statusPill(task.status)),
     h('p', { class: 'lede' }, task.plain_summary),
     task.why_now ? h('p', {}, task.why_now) : null,
+    // Where this step sits in the journey (the phase it belongs to).
+    task.waypoint ? h('p', { class: 'fine-print' }, task.waypoint) : null,
     task.due_on ? h('p', { class: 'note' }, `Due ${formatDate(task.due_on)}.`) : null,
     task.snoozed_until
       ? h('p', { class: 'note' }, `Set aside until ${formatDate(task.snoozed_until)}.`)
@@ -190,7 +193,7 @@ function guidance(task: TaskDetail): HTMLElement {
   );
 }
 
-export const taskPage: Page = async ({ params }) => {
+export const taskPage: Page = async ({ params, navigate }) => {
   const caseId = params.id ?? '';
   const taskId = params.taskId ?? '';
   const base = `/v1/cases/${seg(caseId)}/tasks/${seg(taskId)}`;
@@ -362,6 +365,7 @@ export const taskPage: Page = async ({ params }) => {
   return {
     title: task.title,
     step: null,
+    onTakeABreak: caseBreak(caseId, navigate),
     content: page(
       task.title,
       backLink(journeyHref, 'Back to the journey'),

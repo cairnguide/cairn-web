@@ -59,6 +59,7 @@ import {
   endSessionAfterDeletion,
   getCareLevel,
   leaveFor,
+  loadAiLabel,
   setFlash,
   setOnboarding,
   signOut,
@@ -155,9 +156,14 @@ export const settingsPage: Page = async () => {
       h('h2', {}, 'Keeping in touch'),
       h('p', {}, prefs.preferences.readback),
       h('p', {}, routeLink('/settings/notifications', 'Change how I keep in touch')),
-      h('h2', {}, 'Subscription'),
-      subscription.status_line ? h('p', {}, subscription.status_line) : null,
-      h('p', {}, routeLink('/settings/subscription', 'Subscription and payments')),
+      // No billing wording at care levels 3 and 4 (crisis plan AC-26-03, UC-SUB-21).
+      care >= 3
+        ? null
+        : [
+            h('h2', {}, 'Subscription'),
+            subscription.status_line ? h('p', {}, subscription.status_line) : null,
+            h('p', {}, routeLink('/settings/subscription', 'Subscription and payments')),
+          ],
       h('h2', {}, 'Signing in'),
       h('p', {}, `You sign in with: ${methods.map((m) => METHOD_LABELS[m]).join(', ')}.`),
       h('p', {}, routeLink('/settings/sign-in', 'Ways to sign in')),
@@ -373,10 +379,12 @@ export const subscriptionSettingsPage: Page = async ({ navigate }) => {
     });
 
   return {
-    title: 'Subscription',
+    // At care levels 3 and 4 the API sends only the cancel action and no price wording
+    // (UC-SUB-23 AC03). The page's own words stay neutral too.
+    title: care >= 3 ? 'Your account' : 'Subscription',
     step: null,
     content: page(
-      'Subscription',
+      care >= 3 ? 'Your account' : 'Subscription',
       backLink('/settings', 'Back to Settings'),
       flashNote(),
       sub.status_line ? cairnMessage(sub.status_line) : null,
@@ -581,7 +589,9 @@ export const deleteAccountPage: Page = async () => {
 
 // ------------------------------------------------------------------ ask about the account
 
-export const askPage: Page = ({ navigate }) => {
+export const askPage: Page = async ({ navigate }) => {
+  // This is a chat view, so the AI guide label shows here too (UC-REG-09 AC03).
+  const aiLabel = await loadAiLabel();
   let session: AccountChatSession | null = null;
   const errors = errorSlot();
   const log = h('div', { class: 'conversation', 'aria-live': 'polite' });
@@ -668,6 +678,7 @@ export const askPage: Page = ({ navigate }) => {
     content: page(
       'Ask about my account',
       backLink('/settings', 'Back to Settings'),
+      h('p', { class: 'ai-label' }, aiLabel),
       cairnMessage(
         'You can ask me to delete your account, download your data, or change how I keep in touch. Please leave out any account or card numbers.',
       ),
