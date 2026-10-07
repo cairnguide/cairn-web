@@ -1,0 +1,13 @@
+{
+  "$comment": "High or critical npm advisories that CI allows for now. Each needs a reason, a tracking issue, and a date to look at it again. scripts/audit.ts fails on anything not listed here, on an entry past its review_by date, and on an entry npm audit no longer reports.",
+  "advisories": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "No fixed release exists (all versions <=3.0.3 are affected, and 3.0.3 is the latest). Reached only through the dev-only CSS linter (stylelint, globby, fast-glob, micromatch, braces), which reads only this repo's own src/**/*.css glob. Nothing from it ships to the browser or the Worker.",
+      "issue": "https://github.com/cairnguide/cairn-web/issues/18",
+      "approved_in": "https://github.com/cairnguide/cairn-web/pull/8",
+      "review_by": "2027-01-05"
+    }
+  ]
+}

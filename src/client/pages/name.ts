@@ -10,7 +10,7 @@
  * If the text shows signs of distress, the API saves nothing and pauses
  * sign-up (UC-REG-14). This page then shows the pause screen.
  *
- * Also used from the "all set" screen to change the name later (PATCH /v1/me).
+ * Also used from Settings (UC-REG-17) to change the name later (PATCH /v1/me).
  */
 import { ApiError, api } from '../api.ts';
 import type { AccountResponse, OnboardingResponse } from '../api-types.ts';
@@ -29,14 +29,17 @@ import {
 import { routeForScreen } from '../onboarding.ts';
 import type { Page } from '../router.ts';
 import { canSpeakLocally, createLocalRecognizer, mightSpeakLocally } from '../speech.ts';
-import { ensureOnboarding, setOnboarding } from '../state.ts';
+import { ensureOnboarding, getCareLevel, setFlash, setOnboarding } from '../state.ts';
 import { checkPreferredName } from '../validation.ts';
+import { notesList } from '../components/blocks.ts';
 
 const LEAD_IN = 'Thank you for reading all of that. I am Cairn, and I will be your guide.';
 const FOLLOW_UP = 'A first name, a nickname, or anything you like is fine.';
 
 export const namePage: Page = async ({ url, navigate }) => {
   const editing = url.searchParams.get('change') === '1';
+  // From the setup complete summary, a change returns there (UC-REG-16). Otherwise to Settings.
+  const backTo = url.searchParams.get('return') === 'done' ? '/setup/done' : '/settings';
   const current = await ensureOnboarding();
   if (!editing && current.screen.id !== 'preferred_name') {
     navigate(routeForScreen(current.screen.id), { replace: true });
@@ -108,9 +111,14 @@ export const namePage: Page = async ({ url, navigate }) => {
     if (pronunciation.value.trim()) body.name_pronunciation = pronunciation.value.trim();
     try {
       if (editing) {
-        const updated = await api.patch<AccountResponse>('/v1/me', body);
-        setOnboarding({ ...current, account: updated.account });
-        navigate('/setup/done');
+        const updated = await api.patch<AccountResponse>('/v1/me', {
+          ...body,
+          care_level: getCareLevel(),
+        });
+        // The setup summary is worded from the account, so ask the API for it again.
+        setOnboarding(null);
+        setFlash(updated.notes.map((n) => n.text).join(' ') || null);
+        navigate(backTo);
         return;
       }
       const next = await api.put<OnboardingResponse>('/v1/onboarding/preferred-name', body);
@@ -261,12 +269,12 @@ export const namePage: Page = async ({ url, navigate }) => {
 
   return {
     title: editing ? 'Change what I call you' : 'What to call you',
-    step: editing ? null : 5,
-    needAMomentLabel: current.support.need_a_moment_label,
+    step: editing ? null : 6,
     content: h(
       'div',
       { class: 'content' },
       h('h1', { class: 'sr-only' }, editing ? 'Change what I call you' : 'What to call you'),
+      editing ? null : notesList(current.notes),
       cairnMessage(editing ? question : `${LEAD_IN} ${question} ${FOLLOW_UP}`),
       form,
       callout(
@@ -282,7 +290,7 @@ export const namePage: Page = async ({ url, navigate }) => {
           ' at the top of the page. When you speak, your voice is only turned into text. The recording is never kept.',
         ),
       ),
-      editing ? actions(routeLink('/setup/done', 'Go back')) : null,
+      editing ? actions(routeLink(backTo, 'Go back')) : null,
     ),
   };
 };

@@ -87,6 +87,24 @@ describe('state', () => {
   it('still leaves the app if Auth0 logout cannot be reached', async () => {
     stubFetch(() => new Response('{}', { status: 502 }));
     await state.signOut();
-    expect(assign).toHaveBeenCalledWith('/');
+    expect(assign).toHaveBeenCalledWith('/signed-out');
+  });
+
+  it('keeps the intake session and care level per case, in memory only', () => {
+    const turn = { case: { id: 'c1' }, session: { consecutive_skips: 2 }, care_level: 3 };
+    state.rememberTurn('c1', turn as never);
+    expect(state.getIntakeSession('c1')).toEqual({ consecutive_skips: 2 });
+    expect(state.getCareLevel()).toBe(3);
+    expect(state.takeTurn('c1')).toBe(turn);
+    expect(state.takeTurn('c1')).toBeNull();
+    state.clearPersonalState();
+    expect(state.getIntakeSession('c1')).toBeNull();
+    expect(state.getCareLevel()).toBe(1);
+  });
+
+  it('shows a flash message once', () => {
+    state.setFlash('Saved.');
+    expect(state.takeFlash()).toBe('Saved.');
+    expect(state.takeFlash()).toBeNull();
   });
 });

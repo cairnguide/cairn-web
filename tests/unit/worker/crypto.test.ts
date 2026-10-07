@@ -57,8 +57,12 @@ describe('seal / unseal', () => {
 
   it('rejects tampering', async () => {
     const sealed = await seal({ a: 1 }, SECRET, 'session');
-    const last = sealed.at(-1) === 'A' ? 'B' : 'A';
-    expect(await unseal(sealed.slice(0, -1) + last, SECRET, 'session')).toBeNull();
+    // A middle character: every bit of it is data. The last one can be partly padding.
+    const i = Math.floor(sealed.length / 2);
+    const swapped = sealed[i] === 'A' ? 'B' : 'A';
+    expect(
+      await unseal(sealed.slice(0, i) + swapped + sealed.slice(i + 1), SECRET, 'session'),
+    ).toBeNull();
   });
 
   it('rejects another purpose or another secret', async () => {

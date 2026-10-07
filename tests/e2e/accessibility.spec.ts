@@ -7,8 +7,9 @@ import {
   agree,
   expect,
   expectAccessible,
-  signUpWithGoogle,
   test,
+  signedInHome,
+  signUpWithGoogleOnly,
   throughAcknowledgments,
 } from './fixtures.ts';
 
@@ -23,7 +24,10 @@ test('the start and email screens pass axe', async ({ page }) => {
 });
 
 test('every setup screen passes axe', async ({ page }) => {
-  await signUpWithGoogle(page);
+  await signUpWithGoogleOnly(page);
+  await expectAccessible(page);
+  await page.getByRole('button', { name: "Yes, I'm 18 or older" }).click();
+  await expect(page).toHaveURL(/\/setup\/privacy$/);
   await expectAccessible(page);
   await agree(page);
   await expectAccessible(page);
@@ -31,10 +35,17 @@ test('every setup screen passes axe', async ({ page }) => {
   await expectAccessible(page);
   await agree(page);
   await expectAccessible(page);
+  await page.getByLabel('Your answer').fill('Dana');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page).toHaveURL(/\/setup\/voice$/);
   await expectAccessible(page);
   await page.getByRole('button', { name: 'Choose for me' }).click();
+  await expect(page).toHaveURL(/\/setup\/notifications$/);
+  await expectAccessible(page);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page).toHaveURL(/\/setup\/reminders$/);
+  await expectAccessible(page);
+  await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page).toHaveURL(/\/setup\/done$/);
   await expectAccessible(page);
 });
@@ -80,4 +91,19 @@ test('Read aloud is a toggle button that reports its state', async ({ page }) =>
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(toggle).toContainText('On');
+});
+
+test('signed-in screens pass axe in dark mode', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await signedInHome(page, { activeCase: true });
+  await expectAccessible(page);
+  await page.getByRole('link', { name: 'Open the journey' }).click();
+  await expect(page.getByRole('heading', { name: 'Next up' })).toBeVisible();
+  await expectAccessible(page);
+  await page.goto('/settings');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+  await expectAccessible(page);
+  await page.goto('/support');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Support resources');
+  await expectAccessible(page);
 });
