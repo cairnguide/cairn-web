@@ -34,8 +34,6 @@ export interface SessionData {
   ev: boolean;
   /** How they signed in. */
   m: SignInMethod;
-  /** A name Google or Apple shared, sent once to pre-fill the name question. */
-  nm?: string;
 }
 
 export function nowSeconds(): number {
@@ -71,14 +69,8 @@ export async function readSession(
 }
 
 export async function sessionCookie(session: SessionData, config: AppConfig): Promise<string> {
-  const sealed = await seal(session, config.sessionSecret, 'session');
-  let value = sealed;
-  if (value.length > MAX_COOKIE_BYTES) {
-    // Drop what we can live without before giving up.
-    const { nm: _nm, ...rest } = session;
-    value = await seal(rest, config.sessionSecret, 'session');
-    if (value.length > MAX_COOKIE_BYTES) throw new Error('Session is too large for a cookie.');
-  }
+  const value = await seal(session, config.sessionSecret, 'session');
+  if (value.length > MAX_COOKIE_BYTES) throw new Error('Session is too large for a cookie.');
   const remaining = Math.max(0, config.sessionMaxAgeSeconds - (nowSeconds() - session.iat));
   return setCookie(SESSION_COOKIE, value, { maxAge: remaining, sameSite: 'Lax' });
 }

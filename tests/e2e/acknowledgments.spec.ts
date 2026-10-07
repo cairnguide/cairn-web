@@ -8,7 +8,7 @@ test.describe('UC-REG-07: Privacy and Terms', () => {
   test('shows the API text, never pre-checks, and requires the box', async ({ page }) => {
     await signUpWithGoogle(page);
     const steps = page.getByRole('navigation', { name: 'Account setup steps' });
-    await expect(steps).toContainText('Setting up, step 3 of 7');
+    await expect(steps).toContainText('Setting up, step 4 of 9');
     await expect(steps.locator('[aria-current="step"]')).toContainText('Privacy and terms');
 
     await expect(
@@ -67,7 +67,7 @@ test.describe('UC-REG-08 and UC-REG-09', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(
       'Before we begin, an important notice',
     );
-    await expect(page.getByText(/It is not a human\. It is not an attorney/)).toBeVisible();
+    await expect(page.getByText(/It is not a human\./)).toBeVisible();
     await expect(page.getByText(/California Senate Bill 243/)).toBeVisible();
     await expect(
       page.getByRole('main').getByRole('link', { name: '988', exact: true }),
@@ -102,7 +102,7 @@ test.describe("UC-REG-10: I'm not sure", () => {
     await expect(page.getByRole('link', { name: /Contact support/ })).toBeVisible();
 
     const { users } = await mockLog();
-    expect(users[0]).toMatchObject({ step: 'account_created', consents: [] });
+    expect(users[0]).toMatchObject({ step: 'adult_confirmed', consents: [] });
 
     await page.getByRole('link', { name: 'Read it again' }).click();
     await expect(page).toHaveURL(/\/setup\/privacy$/);

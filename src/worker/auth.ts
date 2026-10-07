@@ -11,6 +11,7 @@
  * Routes:
  *   GET  /auth/login      start sign-in (Google, Apple, the chooser, or a silent re-check)
  *   POST /auth/login      start email sign-in with the address typed on the email screen
+ *   GET  /auth/link       add another way to sign in, from Settings (UC-REG-05)
  *   GET  /auth/callback   Auth0 sends the person back here
  *   GET  /auth/session    what the screens may know about the session (no tokens)
  *   POST /auth/logout     end the session, then sign out of Auth0
@@ -44,7 +45,13 @@ import {
 const TRANSACTION_MAX_AGE = 600;
 /** Refresh the access token when it has less than this many seconds left. */
 const REFRESH_LEEWAY = 60;
-const SCOPE = 'openid profile email offline_access';
+/**
+ * No profile scope: Cairn never asks Google or Apple for a name or photo (cairn-core account
+ * spec D-16 and data_boundary.enforcement). It asks the person what to call them instead.
+ */
+const SCOPE = 'openid email offline_access';
+/** Where Settings shows the result of adding a sign-in method. */
+const LINK_RETURN = '/settings/sign-in';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface Transaction {
@@ -53,6 +60,7 @@ interface Transaction {
   cv: string; // PKCE code verifier
   r: string; // where to go afterwards
   iat: number;
+  k?: 1; // adding a second sign-in method to the signed-in account
 }
 
 interface TokenResponse {
@@ -68,6 +76,8 @@ export interface LoginRequest {
   loginHint?: string | undefined;
   returnTo?: string | undefined;
   silent?: boolean | undefined;
+  /** Sign in with another method only to add it to the current account. */
+  link?: boolean | undefined;
 }
 
 const jwksCache = new Map<string, JWTVerifyGetKey>();
@@ -107,9 +117,10 @@ export async function beginLogin(
     s: randomToken(24),
     n: randomToken(24),
     cv: verifier,
-    r: safeReturnTo(login.returnTo),
+    r: login.link ? LINK_RETURN : safeReturnTo(login.returnTo),
     iat: nowSeconds(),
   };
+  if (login.link) tx.k = 1;
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: config.auth0ClientId,
@@ -125,6 +136,8 @@ export async function beginLogin(
   if (login.signup) params.set('screen_hint', 'signup');
   if (login.loginHint) params.set('login_hint', login.loginHint);
   if (login.silent) params.set('prompt', 'none');
+  // Adding a method always asks Auth0 for a fresh sign-in with that method.
+  if (login.link) params.set('prompt', 'login');
 
   const sealed = await seal(tx, config.sessionSecret, 'transaction');
   // Lax, not Strict: Auth0 returns with a cross-site top-level GET, and the
@@ -147,6 +160,21 @@ export async function handleLoginGet(request: Request, config: AppConfig): Promi
     returnTo: query.get('returnTo') ?? DEFAULT_RETURN_TO,
     silent: query.get('silent') === '1',
   });
+  return redirect(url, { 'Set-Cookie': cookie });
+}
+
+/**
+ * GET /auth/link?method=apple. UC-REG-05: the person is signed in the original
+ * way and signs in once more with the method to add. The callback hands that
+ * second token to the API (POST /v1/me/sign-in-methods) and keeps the current
+ * session. Accounts are never linked any other way.
+ */
+export async function handleLinkGet(request: Request, config: AppConfig): Promise<Response> {
+  const session = await readSession(request, config);
+  if (!session) return redirect(`/auth/login?returnTo=${encodeURIComponent(LINK_RETURN)}`);
+  const method = parseMethod(new URL(request.url).searchParams.get('method'));
+  if (!method) return problem(400, 'invalid_method', 'Please choose Google, Apple, or email.');
+  const { url, cookie } = await beginLogin(request, config, { method, link: true });
   return redirect(url, { 'Set-Cookie': cookie });
 }
 
@@ -219,16 +247,6 @@ async function tokenRequest(
   }
 }
 
-/** Only names from Google or Apple. Email accounts get their address as "name" from Auth0, which is not a name. */
-function providerName(method: SignInMethod, claims: Record<string, unknown>): string | undefined {
-  if (method === 'email') return undefined;
-  const candidate = [claims.given_name, claims.name].find((v) => typeof v === 'string' && v.trim());
-  if (typeof candidate !== 'string') return undefined;
-  const name = candidate.trim();
-  if (name.includes('@') || name.length > 100) return undefined;
-  return name;
-}
-
 export async function handleCallback(request: Request, config: AppConfig): Promise<Response> {
   const url = new URL(request.url);
   const clearTx = clearCookie(TRANSACTION_COOKIE, 'Lax');
@@ -243,7 +261,8 @@ export async function handleCallback(request: Request, config: AppConfig): Promi
   if (error) {
     // UC-REG-02 and UC-REG-03: cancelling on Google's or Apple's screen goes
     // back to the welcome screen with a reassurance note.
-    if (error === 'access_denied') return fail('/?oauth_cancelled=true');
+    if (error === 'access_denied')
+      return fail(tx?.k ? `${LINK_RETURN}?link=cancelled` : '/?oauth_cancelled=true');
     // A silent re-check found no Auth0 session. Ask interactively instead.
     if (
       error === 'login_required' ||
@@ -278,6 +297,8 @@ export async function handleCallback(request: Request, config: AppConfig): Promi
   }
   if (claims.nonce !== tx.n || typeof claims.sub !== 'string') return fail('/?signin_error=true');
 
+  if (tx.k) return finishLink(request, config, tokens.access_token, clearTx);
+
   const method = methodFromSubject(claims.sub);
   const now = nowSeconds();
   const session: SessionData = {
@@ -291,13 +312,53 @@ export async function handleCallback(request: Request, config: AppConfig): Promi
     m: method,
   };
   if (tokens.refresh_token) session.rt = tokens.refresh_token;
-  const name = providerName(method, claims);
-  if (name) session.nm = name;
 
   const headers = new Headers();
   headers.append('Set-Cookie', clearTx);
   headers.append('Set-Cookie', await sessionCookie(session, config));
   return redirect(tx.r, headers);
+}
+
+/**
+ * The second half of /auth/link. The current session stays as it is. The API
+ * checks both tokens and answers linked, already_linked, or a problem.
+ */
+async function finishLink(
+  request: Request,
+  config: AppConfig,
+  newAccessToken: string,
+  clearTx: string,
+): Promise<Response> {
+  const headers = new Headers({ 'Set-Cookie': clearTx });
+  const current = await readSession(request, config);
+  const fresh = current ? await freshSession(current, config) : null;
+  if (!fresh) {
+    headers.append('Set-Cookie', clearSessionCookie());
+    return redirect(`/auth/login?returnTo=${encodeURIComponent(LINK_RETURN)}`, headers);
+  }
+  if (fresh.changed) headers.append('Set-Cookie', await sessionCookie(fresh.session, config));
+  let result = 'failed';
+  try {
+    const response = await fetch(`${config.apiOrigin}/v1/me/sign-in-methods`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${fresh.session.at}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ access_token: newAccessToken }),
+      signal: AbortSignal.timeout(config.apiTimeoutMs),
+    });
+    const body = (await response.json().catch(() => ({}))) as { result?: unknown; code?: unknown };
+    if (response.ok && (body.result === 'linked' || body.result === 'already_linked')) {
+      result = body.result;
+    } else if (typeof body.code === 'string' && /^[a-z_]{1,40}$/.test(body.code)) {
+      result = body.code;
+    }
+  } catch {
+    // Network or timeout: reported as failed.
+  }
+  return redirect(`${LINK_RETURN}?link=${result}`, headers);
 }
 
 /**
@@ -334,7 +395,6 @@ export async function handleSession(request: Request, config: AppConfig): Promis
     email: session.em,
     email_verified: session.ev,
     method: session.m,
-    name_from_provider: session.nm ?? null,
   });
 }
 
@@ -346,6 +406,16 @@ export async function handleLogout(
   if (!isSameOriginWrite(request))
     return problem(403, 'forbidden', 'This request was not allowed.');
   const session = await readSession(request, config);
+  if (session && session.ate > nowSeconds()) {
+    // UC-REG-19: the API stops accepting this token and saves where the person was.
+    waitUntil(
+      fetch(`${config.apiOrigin}/v1/me/sign-out`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.at}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(config.apiTimeoutMs),
+      }).catch(() => undefined),
+    );
+  }
   if (session?.rt) {
     // Best effort: revoke the refresh token so it can't be used again.
     waitUntil(
@@ -360,9 +430,18 @@ export async function handleLogout(
       }).catch(() => undefined),
     );
   }
+  // Where Auth0 sends the browser afterwards: the signed-out screen, which says why.
+  let reason = 'signed_out';
+  try {
+    const body = (await request.json()) as { reason?: unknown };
+    if (body.reason === 'timeout' || body.reason === 'deleted') reason = body.reason;
+  } catch {
+    // No body: a plain sign-out.
+  }
+  const back = reason === 'signed_out' ? '/signed-out' : `/signed-out?reason=${reason}`;
   const params = new URLSearchParams({
     client_id: config.auth0ClientId,
-    returnTo: `${new URL(request.url).origin}/`,
+    returnTo: `${new URL(request.url).origin}${back}`,
   });
   return json({ logout_url: `${config.auth0IssuerBaseUrl}/v2/logout?${params.toString()}` }, 200, {
     'Set-Cookie': clearSessionCookie(),

@@ -1,6 +1,8 @@
 # Shared security job, called by the branch-push and pull-request workflows.
 #
-# - Dependencies: npm audit fails on any high or critical advisory.
+# - Dependencies: npm audit fails on any high or critical advisory, except ones
+#   listed in .github/audit-allowlist.json with a reason, a tracking issue, and
+#   a review_by date (scripts/audit.ts).
 # - Secrets: gitleaks scans the whole git history. (The gitleaks CLI is free
 #   for any account. Only the gitleaks GitHub Action needs an organization license.)
 # - Code: ESLint's security and no-unsanitized rules run in the Lint job, and
@@ -26,8 +28,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: npm audit (high and critical)
-        run: npm audit --audit-level=high
+      - name: npm audit (high and critical, allowlist in .github/audit-allowlist.json)
+        run: node scripts/audit.ts
 
       - name: Lockfile is in sync with package.json
         run: npm ci --ignore-scripts

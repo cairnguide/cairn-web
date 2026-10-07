@@ -122,6 +122,18 @@ export async function canSpeakLocally(): Promise<boolean> {
   }
 }
 
+/** The recognizer that is listening now, if any. */
+let listening: { stop: () => void; discard: () => void } | null = null;
+
+/**
+ * Stops listening and throws away whatever was heard, so nothing is sent.
+ * Called by Take a break (UC-BRK-01, view V-29) and on every page change.
+ */
+export function abortListening(): void {
+  listening?.discard();
+  listening = null;
+}
+
 export function createLocalRecognizer(): LocalRecognizer | null {
   const Ctor = recognitionClass();
   if (!Ctor) return null;
@@ -132,8 +144,20 @@ export function createLocalRecognizer(): LocalRecognizer | null {
   recognition.interimResults = true;
   recognition.continuous = false;
 
+  let discarded = false;
+  const handle = {
+    stop: () => {
+      recognition.stop();
+    },
+    discard: () => {
+      discarded = true;
+      recognition.stop();
+    },
+  };
   const recognizer: LocalRecognizer = {
     start: () => {
+      discarded = false;
+      listening = handle;
       recognition.start();
     },
     stop: () => {
@@ -152,13 +176,13 @@ export function createLocalRecognizer(): LocalRecognizer | null {
       text += result[0]?.transcript ?? '';
       final = result.isFinal;
     }
-    recognizer.onText(text.trim(), final);
+    if (!discarded) recognizer.onText(text.trim(), final);
   });
-  recognition.addEventListener('end', () => {
-    recognizer.onEnd();
-  });
-  recognition.addEventListener('error', () => {
-    recognizer.onEnd();
-  });
+  const ended = () => {
+    if (listening === handle) listening = null;
+    if (!discarded) recognizer.onEnd();
+  };
+  recognition.addEventListener('end', ended);
+  recognition.addEventListener('error', ended);
   return recognizer;
 }

@@ -12,17 +12,31 @@ import { autoReadAloud, errorBanner } from './components/controls.ts';
 import { shell } from './components/layout.ts';
 import type { SetupStepIndex } from './onboarding.ts';
 import { isProtectedPath } from '../shared/paths.ts';
-import { getSession } from './state.ts';
+import { abortListening, stopSpeaking } from './speech.ts';
+import { restoreTyped } from './take-a-break.ts';
+import { getSession, signOut } from './state.ts';
 
 export interface View {
   title: string;
   content: Child;
   step?: SetupStepIndex | null;
-  needAMomentLabel?: string;
+  /**
+   * What the header's Take a break does on this page. By default it opens
+   * /break, the break screen for where the person is (UC-BRK-01). Case
+   * conversations pass their own, which saves where they left off first.
+   */
+  onTakeABreak?: () => void;
+  /**
+   * Break screens show their own resume action instead of Take a break
+   * (Take a break spec view_inventory V-41 to V-43 and V-45).
+   */
+  hideTakeABreak?: boolean;
 }
 
 export interface PageContext {
   url: URL;
+  /** Values for the :name parts of the route path. */
+  params: Record<string, string>;
   navigate: (path: string, options?: { replace?: boolean }) => void;
 }
 
@@ -37,6 +51,8 @@ let routes: Route[] = [];
 let root: HTMLElement;
 let notFound: () => Promise<Page>;
 let renderToken = 0;
+/** The path and query of the page on screen, so a hash-only change doesn't re-render it. */
+let renderedPath = '';
 /** The first page load leaves focus alone so Tab starts at the skip link. */
 let firstRender = true;
 
@@ -46,9 +62,40 @@ export function navigate(path: string, options: { replace?: boolean } = {}): voi
   void render();
 }
 
-function findRoute(pathname: string): Route | undefined {
+/** Route path parameters are opaque ids from the API: letters, digits, dashes, underscores. */
+const PARAM = /^[A-Za-z0-9_-]{1,64}$/;
+
+export function matchRoute(
+  table: Route[],
+  pathname: string,
+): { route: Route; params: Record<string, string> } | undefined {
   const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
-  return routes.find((r) => r.path === normalized);
+  const parts = normalized.split('/');
+  for (const route of table) {
+    const pattern = route.path.split('/');
+    if (pattern.length !== parts.length) continue;
+    const params: Record<string, string> = {};
+    let ok = true;
+    for (let i = 0; i < pattern.length && ok; i += 1) {
+      const want = pattern[i] ?? '';
+      const got = parts[i] ?? '';
+      if (want.startsWith(':')) {
+        if (PARAM.test(got)) params[want.slice(1)] = got;
+        else ok = false;
+      } else if (want !== got) {
+        ok = false;
+      }
+    }
+    if (ok) return { route, params };
+  }
+  return undefined;
+}
+
+/** UC-REG-19. A request after 5 quiet minutes is refused. Sign out fully, then say why. */
+function isTimedOut(error: unknown): boolean {
+  return (
+    error instanceof ApiError && error.status === 401 && error.problem.code === 'session_timed_out'
+  );
 }
 
 function errorView(error: unknown): View {
@@ -72,6 +119,7 @@ function errorView(error: unknown): View {
 export async function render(): Promise<void> {
   const token = ++renderToken;
   const url = new URL(window.location.href);
+  renderedPath = url.pathname + url.search;
 
   // The Worker refuses protected pages without a session. This covers
   // in-app navigation, which doesn't go back to the Worker.
@@ -80,12 +128,16 @@ export async function render(): Promise<void> {
     return;
   }
 
-  const route = findRoute(url.pathname);
+  const match = matchRoute(routes, url.pathname);
   let view: View | null;
   try {
-    const page = await (route ? route.page() : notFound());
-    view = await page({ url, navigate });
+    const page = await (match ? match.route.page() : notFound());
+    view = await page({ url, params: match?.params ?? {}, navigate });
   } catch (error) {
+    if (isTimedOut(error)) {
+      void signOut('timeout');
+      return;
+    }
     if (error instanceof ApiError && error.status === 401) {
       window.location.assign(`/auth/login?returnTo=${encodeURIComponent(url.pathname)}`);
       return;
@@ -96,14 +148,18 @@ export async function render(): Promise<void> {
   if (token !== renderToken || view === null) return;
 
   document.title = `${view.title} · Cairn`;
+  stopSpeaking();
+  abortListening();
   replaceChildren(
     root,
     shell({
       step: view.step ?? null,
       content: view.content,
-      ...(view.needAMomentLabel ? { needAMomentLabel: view.needAMomentLabel } : {}),
+      ...(view.onTakeABreak ? { onTakeABreak: view.onTakeABreak } : {}),
+      hideTakeABreak: view.hideTakeABreak === true,
     }),
   );
+  restoreTyped(root);
   window.scrollTo(0, 0);
   const heading = root.querySelector<HTMLElement>('main h1');
   if (heading) {
@@ -121,8 +177,16 @@ export function startRouter(
 ): void {
   root = target;
   routes = table;
+  window.addEventListener('cairn:api-error', (event) => {
+    if (isTimedOut((event as CustomEvent<unknown>).detail)) void signOut('timeout');
+  });
   notFound = fallback;
-  window.addEventListener('popstate', () => void render());
+  window.addEventListener('popstate', () => {
+    // Following an in-page link (the skip link's #main) changes only the hash. That is
+    // not a new page: re-rendering would replace the page under the person's focus.
+    if (window.location.pathname + window.location.search === renderedPath) return;
+    void render();
+  });
   document.addEventListener('click', (event) => {
     if (
       event.defaultPrevented ||

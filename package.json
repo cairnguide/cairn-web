@@ -2,7 +2,7 @@
   "name": "cairn-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Cairn web front end: sign up, sign in, and account setup. Served by Cloudflare Workers.",
+  "description": "Cairn web front end: sign-up, setup, home, Settings, breaks, subscriptions, cases, the journey, and tasks. Served by Cloudflare Workers.",
   "license": "UNLICENSED",
   "type": "module",
   "engines": {
@@ -26,7 +26,9 @@
     "test:e2e": "playwright test",
     "check:env": "node scripts/check-env.ts",
     "check:headers": "node scripts/check-headers.ts",
-    "env:push": "node scripts/push-env.ts"
+    "env:push": "node scripts/push-env.ts",
+    "api:types": "node scripts/api-types.ts",
+    "audit": "node scripts/audit.ts"
   },
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.3.0",
@@ -52,5 +54,8 @@
     "vite": "^8.3.1",
     "vitest": "^5.0.2",
     "wrangler": "^4.145.0"
+  },
+  "overrides": {
+    "sharp": "^0.35.5"
   }
 }

@@ -5,3 +5,5 @@ coverage/
 playwright-report/
 test-results/
 package-lock.json
+src/client/api-schema.ts
+contract/

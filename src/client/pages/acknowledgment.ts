@@ -23,7 +23,7 @@ import {
   routeLink,
   textButton,
 } from '../components/controls.ts';
-import { compareScreens, routeForScreen, type SetupStepIndex } from '../onboarding.ts';
+import { compareScreens, isMoment, routeForScreen, type SetupStepIndex } from '../onboarding.ts';
 import type { Page, View } from '../router.ts';
 import { ensureOnboarding, setOnboarding, signOut } from '../state.ts';
 
@@ -43,7 +43,7 @@ const TRIAL_TIMELINE = [
   {
     icon: icons.arrowRight,
     when: 'Start journey',
-    what: 'Day 1 of 28. Days keep counting, even if you pause.',
+    what: 'Day 1 of 28. The days keep counting during a break you choose.',
   },
   {
     icon: icons.info,
@@ -56,7 +56,7 @@ const SCREENS: Record<ConsentType, AckScreen> = {
   privacy_terms: {
     consent: 'privacy_terms',
     screen: 'privacy_terms',
-    step: 2,
+    step: 3,
     title: 'Your privacy',
     back: 'finish-later',
     after: () => h('p', { class: 'fine-print' }, 'Cairn is for adults 18 and older.'),
@@ -64,7 +64,7 @@ const SCREENS: Record<ConsentType, AckScreen> = {
   trial_terms: {
     consent: 'trial_terms',
     screen: 'trial_terms',
-    step: 3,
+    step: 4,
     title: 'Your 28 free days',
     back: { href: '/setup/privacy', label: 'Go back' },
     before: () =>
@@ -84,7 +84,7 @@ const SCREENS: Record<ConsentType, AckScreen> = {
   ai_notice: {
     consent: 'ai_notice',
     screen: 'ai_notice',
-    step: 4,
+    step: 5,
     title: 'Before we begin, an important notice',
     back: { href: '/setup/trial', label: 'Go back' },
   },
@@ -101,7 +101,6 @@ function alreadyDoneView(config: AckScreen, current: OnboardingResponse): View {
   return {
     title: config.title,
     step: config.step,
-    needAMomentLabel: current.support.need_a_moment_label,
     content: h(
       'div',
       { class: 'content' },
@@ -123,7 +122,7 @@ function ackPage(consent: ConsentType): Page {
   return async ({ navigate }) => {
     let response = await ensureOnboarding();
     // "declined" and "paused" are moments, not saved steps. Ask the API where things stand.
-    if (response.screen.id === 'declined' || response.screen.id === 'paused') {
+    if (isMoment(response.screen.id)) {
       setOnboarding(null);
       response = await ensureOnboarding();
     }
@@ -209,7 +208,6 @@ function ackPage(consent: ConsentType): Page {
     return {
       title: config.title,
       step: config.step,
-      needAMomentLabel: response.support.need_a_moment_label,
       content: h(
         'div',
         { class: 'content' },

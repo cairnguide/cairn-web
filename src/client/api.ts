@@ -54,14 +54,40 @@ export async function request<T>(method: string, path: string, body?: unknown): 
   } catch {
     throw new ApiError({ status: 0, code: 'network_error', detail: FALLBACK_DETAIL });
   }
-  if (!response.ok) throw new ApiError(await toProblem(response));
+  if (!response.ok) {
+    const error = new ApiError(await toProblem(response));
+    // The router signs out on a session timeout, wherever the request came from (UC-REG-19).
+    if (error.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cairn:api-error', { detail: error }));
+    }
+    throw error;
+  }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
+/** Adds query parameters, skipping undefined values. Ids and values are always encoded. */
+export function withQuery(
+  path: string,
+  query: Record<string, string | number | boolean | undefined | null>,
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null) params.set(key, String(value));
+  }
+  const text = params.toString();
+  return text ? `${path}?${text}` : path;
+}
+
+/** Encodes one path segment (a case or task id from the API). */
+export function seg(value: string): string {
+  return encodeURIComponent(value);
+}
+
 export const api = {
   get: <T>(path: string) => request<T>('GET', `/api${path}`),
-  post: <T>(path: string, body: unknown) => request<T>('POST', `/api${path}`, body),
+  post: <T>(path: string, body?: unknown) => request<T>('POST', `/api${path}`, body),
   put: <T>(path: string, body: unknown) => request<T>('PUT', `/api${path}`, body),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', `/api${path}`, body),
+  del: <T>(path: string) => request<T>('DELETE', `/api${path}`),
 };

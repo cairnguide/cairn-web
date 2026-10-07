@@ -80,6 +80,40 @@ describe('API proxy', () => {
     expect(calls[0]?.headers.get('Authorization')).toBeNull();
   });
 
+  it.each(['/v1/support-resources', '/v1/sign-in-help?method=email', '/v1/break', '/v1/policies'])(
+    'serves %s signed out, like the API (AC-26-10, UC-REG-20, UC-BRK-02)',
+    async (path) => {
+      const calls = fakeApi();
+      const response = await handleApi(new Request(`${ORIGIN}/api${path}`), config);
+      expect(response.status).toBe(200);
+      expect(calls[0]?.headers.get('Authorization')).toBeNull();
+    },
+  );
+
+  it.each(['/v1/me/break', '/v1/home', '/v1/cases', '/v1/onboarding/need-a-moment'])(
+    'refuses %s signed out',
+    async (path) => {
+      const calls = fakeApi();
+      expect((await handleApi(new Request(`${ORIGIN}/api${path}`), config)).status).toBe(401);
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it('forwards DELETE, for ending a break or removing a sign-in method', async () => {
+    const calls = fakeApi();
+    const cookie = await signedInCookie();
+    const response = await handleApi(
+      new Request(`${ORIGIN}/api/v1/me/break?care_level=1`, {
+        method: 'DELETE',
+        headers: writeHeaders(cookie),
+      }),
+      config,
+    );
+    expect(response.status).toBe(200);
+    expect(calls[0]?.method).toBe('DELETE');
+    expect(calls[0]?.url).toBe('https://api.cairn.test/v1/me/break?care_level=1');
+  });
+
   it('refuses private endpoints without a session', async () => {
     const calls = fakeApi();
     const response = await handleApi(new Request(`${ORIGIN}/api/v1/onboarding`), config);

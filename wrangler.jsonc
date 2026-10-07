@@ -29,8 +29,13 @@
       "/config.json",
       "/setup",
       "/setup/*",
+      "/home",
+      "/cases",
       "/cases/*",
+      "/settings",
       "/settings/*",
+      "/subscription",
+      "/subscription/*",
     ],
   },
 

@@ -10,6 +10,8 @@
  * - A strict Content Security Policy. Only this origin's scripts, styles, and
  *   fonts. Fonts are self-hosted, so no request reaches Google Fonts.
  * - Trusted Types are required, so no code can write HTML strings into the page.
+ *   One named policy exists, `cairn-push`, and it only ever returns the fixed
+ *   URL of the browser notification service worker (src/client/push.ts).
  * - No referrer is sent anywhere.
  * - The microphone is allowed for this origin only, for "Speak" (on-device
  *   speech recognition). Everything else is off.
@@ -30,7 +32,7 @@ export const CONTENT_SECURITY_POLICY = [
   "base-uri 'none'",
   "object-src 'none'",
   "require-trusted-types-for 'script'",
-  "trusted-types 'none'",
+  'trusted-types cairn-push',
 ].join('; ');
 
 export const PERMISSIONS_POLICY = [

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, CLIENT_ID, api, request } from '../../../src/client/api.ts';
+import { ApiError, CLIENT_ID, api, request, seg, withQuery } from '../../../src/client/api.ts';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -58,5 +58,27 @@ describe('api client', () => {
   it('handles 204 No Content', async () => {
     stubFetch(new Response(null, { status: 204 }));
     expect(await api.put('/v1/x', {})).toBeUndefined();
+  });
+
+  it('builds query strings, skipping empty values', () => {
+    expect(
+      withQuery('/v1/home', { care_level: 2, session_start: true, x: undefined, y: null }),
+    ).toBe('/v1/home?care_level=2&session_start=true');
+    expect(withQuery('/v1/home', {})).toBe('/v1/home');
+  });
+
+  it('encodes path segments', () => {
+    expect(seg('a/b?c')).toBe('a%2Fb%3Fc');
+  });
+
+  it('sends DELETE and POST without a body', async () => {
+    const mock = vi.fn(() => Promise.resolve(Response.json({ ok: true })));
+    vi.stubGlobal('fetch', mock);
+    await api.del('/v1/me/break');
+    await api.post('/v1/me/subscription/undo-cancel');
+    const calls = mock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0]?.[0]).toBe('/api/v1/me/break');
+    expect(calls[0]?.[1].method).toBe('DELETE');
+    expect(calls[1]?.[1].body).toBeUndefined();
   });
 });

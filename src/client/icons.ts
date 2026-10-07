@@ -35,6 +35,20 @@ export const icons = {
   ],
   mic: [{ rect: [9, 3, 6, 11, 3] }, { path: 'M5 11a7 7 0 0 0 14 0M12 18v3' }],
   stop: [{ rect: [6, 6, 12, 12, 2] }],
+  heart: [{ path: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z' }],
+  settings: [
+    { circle: [12, 12, 3] },
+    {
+      path: 'M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1',
+    },
+  ],
+  home: [{ path: 'M3 11l9-7 9 7M5 10v10h14V10' }],
+  calendar: [{ rect: [3, 5, 18, 16, 2] }, { path: 'M3 10h18M8 3v4M16 3v4' }],
+  edit: [{ path: 'M4 20h4L19 9l-4-4L4 16Z' }],
+  arrowLeft: [{ path: 'M19 12H5M11 6l-6 6 6 6' }],
+  scale: [{ path: 'M12 4v16M7 20h10M5 7h14M8 7l-3 6h6ZM16 7l-3 6h6Z' }],
+  partial: [{ circle: [12, 12, 9] }, { path: 'M12 3a9 9 0 0 1 0 18Z' }],
+  minus: [{ circle: [12, 12, 9] }, { path: 'M8 12h8' }],
   pause: [{ rect: [6, 5, 4, 14, 1] }, { rect: [14, 5, 4, 14, 1] }],
 } satisfies Record<string, readonly IconShape[]>;
 

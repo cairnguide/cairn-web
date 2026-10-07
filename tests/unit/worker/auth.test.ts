@@ -5,6 +5,7 @@ import {
   connectionFor,
   freshSession,
   handleCallback,
+  handleLinkGet,
   handleLoginGet,
   handleLoginPost,
   handleLogout,
@@ -47,6 +48,7 @@ async function idToken(
 function fakeAuth0(
   tokenResponse: () => Promise<Record<string, unknown>> | Record<string, unknown>,
   status = 200,
+  apiHandler?: (url: string, init?: RequestInit) => Response,
 ) {
   const calls: URLSearchParams[] = [];
   vi.stubGlobal(
@@ -60,6 +62,7 @@ function fakeAuth0(
         calls.push(new URLSearchParams(String(init?.body)));
         return Response.json(await tokenResponse(), { status });
       }
+      if (apiHandler && url.startsWith(config.apiOrigin)) return apiHandler(url, init);
       return new Response('unexpected', { status: 500 });
     }),
   );
@@ -93,7 +96,8 @@ describe('beginLogin', () => {
     expect(p.get('client_id')).toBe(config.auth0ClientId);
     expect(p.get('redirect_uri')).toBe(`${ORIGIN}/auth/callback`);
     expect(p.get('audience')).toBe(config.auth0Audience);
-    expect(p.get('scope')).toBe('openid profile email offline_access');
+    // No profile scope: Cairn never asks Google or Apple for a name or photo (D-16).
+    expect(p.get('scope')).toBe('openid email offline_access');
     expect(p.get('code_challenge_method')).toBe('S256');
     expect(p.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(p.get('state')).toBeTruthy();
@@ -238,7 +242,6 @@ describe('GET /auth/callback', () => {
       email: 'd•••@example.com',
       email_verified: true,
       method: 'google',
-      name_from_provider: 'Dana',
     });
   });
 
@@ -326,7 +329,7 @@ describe('GET /auth/callback', () => {
     expect(response.headers.get('Location')).toBe('/?signin_error=true');
   });
 
-  it('does not keep an email address as a name for email accounts', async () => {
+  it('keeps no name from the provider, even if one is in the ID token', async () => {
     const { state, nonce, cookie } = await startedLogin();
     fakeAuth0(async () => ({
       access_token: 'a',
@@ -349,11 +352,10 @@ describe('GET /auth/callback', () => {
       }),
       config,
     );
-    expect(await info.json()).toMatchObject({
-      method: 'email',
-      name_from_provider: null,
-      email_verified: false,
-    });
+    const body = (await info.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ method: 'email', email_verified: false });
+    expect(JSON.stringify(body)).not.toContain('dana@example.com');
+    expect(body).not.toHaveProperty('name_from_provider');
   });
 });
 
@@ -406,8 +408,64 @@ describe('POST /auth/logout', () => {
     const { logout_url } = (await response.json()) as { logout_url: string };
     const url = new URL(logout_url);
     expect(url.origin + url.pathname).toBe(`${ISSUER}/v2/logout`);
-    expect(url.searchParams.get('returnTo')).toBe(`${ORIGIN}/`);
+    expect(url.searchParams.get('returnTo')).toBe(`${ORIGIN}/signed-out`);
     expect(setCookies(response)[0]).toMatch(/^__Host-cairn_session=; .*Max-Age=0/);
+  });
+
+  it('comes back to the timed-out message after an inactivity sign-out', async () => {
+    const request = new Request(`${ORIGIN}/auth/logout`, {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'X-Cairn-Client': 'web', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'timeout' }),
+    });
+    const { logout_url } = (await (
+      await handleLogout(request, config, () => undefined)
+    ).json()) as {
+      logout_url: string;
+    };
+    expect(new URL(logout_url).searchParams.get('returnTo')).toBe(
+      `${ORIGIN}/signed-out?reason=timeout`,
+    );
+  });
+
+  it('tells the API the person signed out (UC-REG-19)', async () => {
+    const { state, nonce, cookie } = await startedLogin();
+    const apiCalls: string[] = [];
+    fakeAuth0(
+      async () => ({
+        access_token: 'at-1',
+        expires_in: 600,
+        id_token: await idToken({ sub: 'email|1', nonce }),
+      }),
+      200,
+      (url, init) => {
+        apiCalls.push(
+          `${init?.method ?? 'GET'} ${url} ${new Headers(init?.headers).get('Authorization') ?? ''}`,
+        );
+        return Response.json({ message: 'Signed out.' });
+      },
+    );
+    const signedIn = await handleCallback(
+      new Request(`${ORIGIN}/auth/callback?code=abc&state=${state}`, {
+        headers: { Cookie: cookie },
+      }),
+      config,
+    );
+    const pending: Promise<unknown>[] = [];
+    await handleLogout(
+      new Request(`${ORIGIN}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          Origin: ORIGIN,
+          'X-Cairn-Client': 'web',
+          Cookie: cookieHeader(setCookies(signedIn)),
+        },
+      }),
+      config,
+      (p) => pending.push(p),
+    );
+    await Promise.all(pending);
+    expect(apiCalls).toContain(`POST ${config.apiOrigin}/v1/me/sign-out Bearer at-1`);
   });
 
   it('refuses a cross-site logout', async () => {
@@ -416,6 +474,99 @@ describe('POST /auth/logout', () => {
       headers: { Origin: 'https://evil.example' },
     });
     expect((await handleLogout(request, config, () => undefined)).status).toBe(403);
+  });
+});
+
+describe('GET /auth/link (UC-REG-05)', () => {
+  async function signedInCookie(): Promise<string> {
+    const { state, nonce, cookie } = await startedLogin();
+    fakeAuth0(async () => ({
+      access_token: 'original',
+      expires_in: 600,
+      id_token: await idToken({ sub: 'email|1', nonce }),
+    }));
+    const response = await handleCallback(
+      new Request(`${ORIGIN}/auth/callback?code=abc&state=${state}`, {
+        headers: { Cookie: cookie },
+      }),
+      config,
+    );
+    return cookieHeader(setCookies(response));
+  }
+
+  it('needs a signed-in session', async () => {
+    const response = await handleLinkGet(new Request(`${ORIGIN}/auth/link?method=apple`), config);
+    expect(response.headers.get('Location')).toBe('/auth/login?returnTo=%2Fsettings%2Fsign-in');
+  });
+
+  it('signs in with the new method, then hands its token to the API, keeping the session', async () => {
+    const session = await signedInCookie();
+    const start = await handleLinkGet(
+      new Request(`${ORIGIN}/auth/link?method=apple`, { headers: { Cookie: session } }),
+      config,
+    );
+    const authorize = new URL(start.headers.get('Location')!);
+    expect(authorize.searchParams.get('connection')).toBe('apple');
+    expect(authorize.searchParams.get('prompt')).toBe('login');
+    const txCookie = cookieHeader(setCookies(start));
+    const linked: { auth: string | null; body: unknown }[] = [];
+    fakeAuth0(
+      async () => ({
+        access_token: 'second',
+        expires_in: 600,
+        id_token: await idToken({ sub: 'apple|9', nonce: authorize.searchParams.get('nonce') }),
+      }),
+      200,
+      (url, init) => {
+        expect(url).toBe(`${config.apiOrigin}/v1/me/sign-in-methods`);
+        linked.push({
+          auth: new Headers(init?.headers).get('Authorization'),
+          body: JSON.parse(String(init?.body)),
+        });
+        return Response.json({ result: 'linked', message: 'Done.' });
+      },
+    );
+    const done = await handleCallback(
+      new Request(`${ORIGIN}/auth/callback?code=xyz&state=${authorize.searchParams.get('state')}`, {
+        headers: { Cookie: `${session}; ${txCookie}` },
+      }),
+      config,
+    );
+    expect(done.headers.get('Location')).toBe('/settings/sign-in?link=linked');
+    expect(linked).toEqual([{ auth: 'Bearer original', body: { access_token: 'second' } }]);
+    // The original session is kept: no new session cookie for the second sign-in.
+    expect(
+      setCookies(done).some(
+        (c) => c.startsWith('__Host-cairn_session=') && !c.startsWith('__Host-cairn_session=;'),
+      ),
+    ).toBe(false);
+  });
+
+  it('reports a refusal by its code', async () => {
+    const session = await signedInCookie();
+    const start = await handleLinkGet(
+      new Request(`${ORIGIN}/auth/link?method=google`, { headers: { Cookie: session } }),
+      config,
+    );
+    const authorize = new URL(start.headers.get('Location')!);
+    fakeAuth0(
+      async () => ({
+        access_token: 'second',
+        id_token: await idToken({
+          sub: 'google-oauth2|9',
+          nonce: authorize.searchParams.get('nonce'),
+        }),
+      }),
+      200,
+      () => Response.json({ code: 'sign_in_in_use', detail: 'x' }, { status: 409 }),
+    );
+    const done = await handleCallback(
+      new Request(`${ORIGIN}/auth/callback?code=xyz&state=${authorize.searchParams.get('state')}`, {
+        headers: { Cookie: `${session}; ${cookieHeader(setCookies(start))}` },
+      }),
+      config,
+    );
+    expect(done.headers.get('Location')).toBe('/settings/sign-in?link=sign_in_in_use');
   });
 });
 
