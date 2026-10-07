@@ -2,16 +2,32 @@ import { describe, expect, it } from 'vitest';
 import { isProtectedPath, safeReturnTo } from '../../../src/shared/paths.ts';
 
 describe('isProtectedPath', () => {
-  it.each(['/setup', '/setup/privacy', '/cases/new', '/settings'])('%s needs a session', (path) => {
+  it.each([
+    '/setup',
+    '/setup/privacy',
+    '/home',
+    '/cases',
+    '/cases/abc/journey',
+    '/settings',
+    '/settings/delete',
+    '/subscription/return',
+  ])('%s needs a session', (path) => {
     expect(isProtectedPath(path)).toBe(true);
   });
 
-  it.each(['/', '/signup/email', '/moment', '/setupx', '/assets/index.js'])(
-    '%s is public',
-    (path) => {
-      expect(isProtectedPath(path)).toBe(false);
-    },
-  );
+  it.each([
+    '/',
+    '/signup/email',
+    '/support',
+    '/break',
+    '/signed-out',
+    '/sign-in-help',
+    '/setupx',
+    '/homes',
+    '/assets/index.js',
+  ])('%s is public', (path) => {
+    expect(isProtectedPath(path)).toBe(false);
+  });
 });
 
 describe('safeReturnTo (open redirect protection)', () => {

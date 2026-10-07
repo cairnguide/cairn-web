@@ -2,6 +2,11 @@
  * The page shell from the wireframes: skip link, header with display
  * controls, the "Setting up" step list, main content, and the footer with
  * Privacy Policy, Terms of Use, the AI disclosure, and the 988 crisis line.
+ *
+ * Available on every screen (account spec available_on_every_screen, crisis
+ * plan support_resources, UC-BRK-01): Take a break, the Support resources
+ * link (works signed out), Read this to me, and, once signed in, Settings and
+ * Sign out.
  */
 import { h, svgIcon, type Child } from '../dom.ts';
 import { icons } from '../icons.ts';
@@ -14,15 +19,40 @@ import {
   setReadAloud,
 } from '../preferences.ts';
 import { stopSpeaking } from '../speech.ts';
-import { getConfig, getSession, signOut } from '../state.ts';
+import { getConfig, getSession, getWelcome, signOut } from '../state.ts';
 import { newTabLink } from './controls.ts';
 
 export interface ShellOptions {
   /** Index into SETUP_STEPS to show the step list, or null for none. */
   step: SetupStepIndex | null;
   content: Child;
-  /** Show "I need a moment" in the step list (UC-REG-14). */
-  needAMomentLabel?: string;
+  /** What Take a break does on this page. Defaults to opening /break. */
+  onTakeABreak?: () => void;
+}
+
+const BREAK_LABEL = 'Take a break';
+const SUPPORT_LABEL = 'Support resources';
+
+function breakLabel(): string {
+  return getWelcome()?.support.take_a_break_label ?? BREAK_LABEL;
+}
+
+function supportLabel(): string {
+  return getWelcome()?.support.support_resources_label ?? SUPPORT_LABEL;
+}
+
+/** Take a break: one select, no confirmation (UC-BRK-01). */
+function takeABreakControl(onTakeABreak?: () => void): HTMLElement {
+  const content = [svgIcon(icons.pause, 20), h('span', {}, breakLabel())];
+  if (onTakeABreak) {
+    return h('button', { type: 'button', class: 'control', onClick: onTakeABreak }, content);
+  }
+  const from = window.location.pathname;
+  return h(
+    'a',
+    { class: 'control', href: `/break?from=${encodeURIComponent(from)}`, 'data-route': '' },
+    content,
+  );
 }
 
 function textSizeButton(): HTMLButtonElement {
@@ -67,7 +97,7 @@ function readAloudButton(): HTMLButtonElement {
   return button;
 }
 
-export function siteHeader(): HTMLElement {
+export function siteHeader(onTakeABreak?: () => void): HTMLElement {
   const session = getSession();
   const config = getConfig();
   return h(
@@ -91,6 +121,25 @@ export function siteHeader(): HTMLElement {
         textSizeButton(),
         readAloudButton(),
         newTabLink(config.support_url, [svgIcon(icons.help, 20), h('span', {}, 'Help')], 'control'),
+      ),
+      h(
+        'nav',
+        { class: 'controls', 'aria-label': 'Always available' },
+        takeABreakControl(onTakeABreak),
+        h(
+          'a',
+          { class: 'control', href: '/support', 'data-route': '' },
+          svgIcon(icons.heart, 20),
+          h('span', {}, supportLabel()),
+        ),
+        session.authenticated
+          ? h(
+              'a',
+              { class: 'control', href: '/settings', 'data-route': '' },
+              svgIcon(icons.settings, 20),
+              h('span', {}, 'Settings'),
+            )
+          : null,
         session.authenticated
           ? h(
               'button',
@@ -108,7 +157,7 @@ export function siteHeader(): HTMLElement {
   );
 }
 
-export function setupSteps(current: SetupStepIndex, needAMomentLabel?: string): HTMLElement {
+export function setupSteps(current: SetupStepIndex): HTMLElement {
   return h(
     'nav',
     { class: 'setup-steps', 'aria-label': 'Account setup steps' },
@@ -137,14 +186,12 @@ export function setupSteps(current: SetupStepIndex, needAMomentLabel?: string): 
       }),
     ),
     h('p', { class: 'setup-note' }, 'You can stop at any step. Your progress is saved.'),
-    needAMomentLabel
-      ? h(
-          'a',
-          { class: 'need-a-moment', href: '/setup/paused', 'data-route': '' },
-          svgIcon(icons.pause, 20),
-          needAMomentLabel,
-        )
-      : null,
+    h(
+      'a',
+      { class: 'need-a-moment', href: '/break?from=%2Fsetup', 'data-route': '' },
+      svgIcon(icons.pause, 20),
+      breakLabel(),
+    ),
   );
 }
 
@@ -158,6 +205,7 @@ export function siteFooter(): HTMLElement {
       { class: 'footer-links' },
       newTabLink(config.privacy_policy_url, 'Privacy Policy'),
       newTabLink(config.terms_url, 'Terms of Use'),
+      h('a', { href: '/support', 'data-route': '' }, supportLabel()),
       h('span', { class: 'footer-note' }, 'Cairn is an AI guide, not a human.'),
     ),
     h(
@@ -174,17 +222,12 @@ export function shell(options: ShellOptions): HTMLElement {
   const body =
     options.step === null
       ? main
-      : h(
-          'div',
-          { class: 'setup-layout' },
-          setupSteps(options.step, options.needAMomentLabel),
-          main,
-        );
+      : h('div', { class: 'setup-layout' }, setupSteps(options.step), main);
   return h(
     'div',
     { class: 'page' },
     h('a', { class: 'skip-link', href: '#main' }, 'Skip to main content'),
-    siteHeader(),
+    siteHeader(options.onTakeABreak),
     body,
     siteFooter(),
   );

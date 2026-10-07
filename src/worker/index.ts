@@ -12,6 +12,7 @@ import { validateEnv, type AppConfig } from '../shared/env.ts';
 import { isProtectedPath } from '../shared/paths.ts';
 import {
   handleCallback,
+  handleLinkGet,
   handleLoginGet,
   handleLoginPost,
   handleLogout,
@@ -70,6 +71,7 @@ async function route(
     if (method === 'POST') return handleLoginPost(request, config);
     return problem(405, 'method_not_allowed', 'Use GET or POST.');
   }
+  if (pathname === '/auth/link' && method === 'GET') return handleLinkGet(request, config);
   if (pathname === '/auth/callback' && method === 'GET') return handleCallback(request, config);
   if (pathname === '/auth/session' && method === 'GET') return handleSession(request, config);
   if (pathname === '/auth/logout' && method === 'POST') {

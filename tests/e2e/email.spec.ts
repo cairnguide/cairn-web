@@ -8,7 +8,7 @@ test.describe('UC-REG-04: email sign-up', () => {
     await page.goto('/signup/email');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Create your account');
     await expect(page.getByRole('navigation', { name: 'Account setup steps' })).toContainText(
-      'Setting up, step 1 of 7',
+      'Setting up, step 1 of 9',
     );
 
     const email = page.getByLabel('Email address');
@@ -41,7 +41,7 @@ test.describe('UC-REG-04: email sign-up', () => {
     await page.goto('/signup/email');
     await page.getByLabel('Email address').fill('sam@example.com');
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/setup\/privacy$/);
+    await expect(page).toHaveURL(/\/setup\/adult$/);
     expect(
       requests.filter((u) => u.includes('sam%40example.com') || u.includes('sam@example.com')),
     ).toEqual([]);
@@ -60,11 +60,11 @@ test.describe('UC-REG-04: email sign-up', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Check your email');
     await expect(page.getByRole('main').getByText('n•••@example.com')).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Account setup steps' })).toContainText(
-      'Setting up, step 2 of 7',
+      'Setting up, step 2 of 9',
     );
 
     await mockControl({ verified: ['new@example.com'] });
     await page.getByRole('button', { name: 'I have confirmed my email' }).click();
-    await expect(page).toHaveURL(/\/setup\/privacy$/);
+    await expect(page).toHaveURL(/\/setup\/adult$/);
   });
 });

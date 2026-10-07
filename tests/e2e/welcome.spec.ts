@@ -2,7 +2,7 @@
  * UC-REG-01 (welcome), UC-REG-02 and UC-REG-03 (Google and Apple, including cancelling).
  * Wireframe 1: "Start: choose how to sign up".
  */
-import { expect, mockControl, test } from './fixtures.ts';
+import { expect, mockControl, mockLog, test } from './fixtures.ts';
 
 test.describe('UC-REG-01: welcome', () => {
   test('acknowledges the loss first and offers three equal ways to sign up', async ({ page }) => {
@@ -63,18 +63,39 @@ test.describe('UC-REG-01: welcome', () => {
 });
 
 test.describe('UC-REG-02 and UC-REG-03: Google and Apple', () => {
-  test('Continue with Google creates the account and opens Privacy and terms', async ({ page }) => {
+  test('Continue with Google creates the account and asks if they are an adult first', async ({
+    page,
+  }) => {
     await page.goto('/');
     await page.getByRole('link', { name: /Continue with Google/ }).click();
-    await expect(page).toHaveURL(/\/setup\/privacy$/);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your privacy');
+    await expect(page).toHaveURL(/\/setup\/adult$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Are you 18 or older?');
     await expect(page.getByText('Signed in as')).toContainText('d•••@example.com');
+    // Only the browser's time zone is sent. No name from Google (D-16).
+    const { api } = await mockLog();
+    const registration = api.find((c) => c.path === '/v1/registrations');
+    expect(Object.keys(registration?.body ?? {})).toEqual(['time_zone']);
   });
 
   test('Continue with Apple works the same way', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: /Continue with Apple/ }).click();
-    await expect(page).toHaveURL(/\/setup\/privacy$/);
+    await expect(page).toHaveURL(/\/setup\/adult$/);
+  });
+
+  test('UC-REG-06: yes goes on to Privacy and terms, and no stops with support', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.getByRole('link', { name: /Continue with Google/ }).click();
+    await page.getByRole('button', { name: 'No' }).click();
+    await expect(page).toHaveURL(/\/setup\/under-18$/);
+    await expect(
+      page.getByText("Cairn is for adults, so we can't set up an account for you."),
+    ).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Support resources' }).first()).toBeVisible();
+    const { users } = await mockLog();
+    expect(users[0]?.adult).toBe(false);
   });
 
   test('cancelling on the provider screen returns to the welcome screen with reassurance', async ({

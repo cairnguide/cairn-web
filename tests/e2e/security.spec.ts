@@ -37,7 +37,7 @@ test.describe('authentication required', () => {
 
   test('open redirects through returnTo are refused', async ({ page }) => {
     await page.goto('/auth/login?returnTo=https://evil.example');
-    await expect(page).toHaveURL(/localhost:8787\/setup\/privacy$/);
+    await expect(page).toHaveURL(/localhost:8787\/setup\/adult$/);
   });
 });
 
@@ -70,7 +70,8 @@ test.describe('session and tokens', () => {
     const { api } = await mockLog();
     const registration = api.find((c) => c.path === '/v1/registrations');
     expect(registration?.authorized).toBe(true);
-    expect(registration?.body).toMatchObject({ name_from_provider: 'Dana' });
+    // Only the time zone: no name or photo from the provider is ever sent (D-16).
+    expect(Object.keys(registration?.body ?? {})).toEqual(['time_zone']);
   });
 });
 

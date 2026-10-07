@@ -4,7 +4,9 @@
  * Acknowledges the loss first, then offers Google, Apple, and email with
  * equal weight, a sign-in link, and a "Before you start" panel. Nothing is
  * asked for here. If Google or Apple sign-in was cancelled, a reassurance
- * note is shown (the API's oauth_cancelled copy).
+ * note is shown (the API's oauth_cancelled copy). The Support resources link
+ * and Take a break work without signing in (crisis plan AC-26-10, UC-BRK-02),
+ * and "I can't get into my email" opens sign-in help (UC-REG-20).
  */
 import { api } from '../api.ts';
 import type { SignInMethod, WelcomeResponse } from '../api-types.ts';
@@ -12,7 +14,7 @@ import { h, svgIcon } from '../dom.ts';
 import { icons, type IconName } from '../icons.ts';
 import { callout, newTabLink, routeLink } from '../components/controls.ts';
 import type { Page } from '../router.ts';
-import { getSession } from '../state.ts';
+import { getSession, getWelcome } from '../state.ts';
 
 const METHOD_DETAILS: Record<SignInMethod, { label: string; hint: string; href: string }> = {
   google: {
@@ -83,13 +85,15 @@ export const startPage: Page = async ({ url, navigate }) => {
   }
 
   const cancelled = url.searchParams.get('oauth_cancelled') === 'true';
-  let welcome: WelcomeResponse | null = null;
-  try {
-    welcome = await api.get<WelcomeResponse>(
-      `/v1/welcome${cancelled ? '?oauth_cancelled=true' : ''}`,
-    );
-  } catch {
-    // The screen still works without the API. Labels fall back to the wireframe's.
+  let welcome: WelcomeResponse | null = cancelled ? null : getWelcome();
+  if (!welcome) {
+    try {
+      welcome = await api.get<WelcomeResponse>(
+        `/v1/welcome${cancelled ? '?oauth_cancelled=true' : ''}`,
+      );
+    } catch {
+      // The screen still works without the API. Labels fall back to the wireframe's.
+    }
   }
 
   const labels = new Map(welcome?.methods.map((m) => [m.method, m.label]) ?? []);
@@ -148,6 +152,11 @@ export const startPage: Page = async ({ url, navigate }) => {
           'Already have an account? ',
           h('a', { href: '/auth/login' }, 'Sign in'),
         ),
+        h(
+          'p',
+          {},
+          routeLink('/sign-in-help', welcome?.cant_get_into_email ?? "I can't get into my email"),
+        ),
         welcome?.not_ready
           ? h('p', {}, newTabLink(welcome.not_ready.url, welcome.not_ready.label, 'text-link'))
           : null,
@@ -163,7 +172,13 @@ export const startPage: Page = async ({ url, navigate }) => {
             h('li', {}, svgIcon(icons[icon], 26), h('span', {}, text)),
           ),
         ),
-        h('p', { class: 'before-links' }, routeLink('/moment', 'I need a moment')),
+        h(
+          'p',
+          { class: 'before-links' },
+          routeLink('/support', welcome?.support.support_resources_label ?? 'Support resources'),
+          ' ',
+          routeLink('/break?from=%2F', welcome?.support.take_a_break_label ?? 'Take a break'),
+        ),
       ),
     ),
   };

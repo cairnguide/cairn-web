@@ -15,6 +15,9 @@ test('offers the method used last time as the main button, and never links accou
     'You already have a Cairn account',
   );
   await expect(page.getByText('Last time you signed in with Google.')).toBeVisible();
-  await page.getByRole('button', { name: 'Sign in with Google' }).click();
-  await expect(page).toHaveURL(/\/setup\/privacy$/);
+  await expect(
+    page.getByRole('button', { name: 'Sign in with Google, then add email' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Sign in with Google', exact: true }).click();
+  await expect(page).toHaveURL(/\/setup\/adult$/);
 });

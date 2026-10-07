@@ -5,7 +5,13 @@
  */
 
 /** Pages that are only served with a valid session. Keep in sync with wrangler.jsonc run_worker_first. */
-export const PROTECTED_PREFIXES = ['/setup', '/cases', '/settings'] as const;
+export const PROTECTED_PREFIXES = [
+  '/setup',
+  '/home',
+  '/cases',
+  '/settings',
+  '/subscription',
+] as const;
 
 export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(

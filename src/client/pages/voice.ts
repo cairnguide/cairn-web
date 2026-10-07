@@ -6,7 +6,7 @@
  * picks the default voice. The choice changes tone only, never the crisis
  * protocol, AI disclosure, attorney referrals, or citations.
  *
- * Also used from the "all set" screen to change the voice later
+ * Also used from Settings (UC-REG-17) to change the voice later
  * (PATCH /v1/me). The API only lists the choices during setup, so that view
  * uses the same four voices as voices/manifest.yaml.
  */
@@ -25,7 +25,7 @@ import {
 import { routeForScreen } from '../onboarding.ts';
 import type { Page } from '../router.ts';
 import { canListen, speak } from '../speech.ts';
-import { ensureOnboarding, setOnboarding } from '../state.ts';
+import { ensureOnboarding, getCareLevel, setFlash, setOnboarding } from '../state.ts';
 
 /** Mirrors cairn-core voices/manifest.yaml (labels and taglines). Used only when changing the voice later. */
 export const VOICE_LABELS: Record<string, { label: string; tagline: string }> = {
@@ -87,6 +87,8 @@ function choiceCard(choice: Choice, checked: boolean, onSelect: () => void): HTM
 
 export const voicePage: Page = async ({ url, navigate }) => {
   const editing = url.searchParams.get('change') === '1';
+  // From the setup complete summary, a change returns there (UC-REG-16). Otherwise to Settings.
+  const backTo = url.searchParams.get('return') === 'done' ? '/setup/done' : '/settings';
   const current = await ensureOnboarding();
   if (!editing && current.screen.id !== 'personality') {
     navigate(routeForScreen(current.screen.id), { replace: true });
@@ -131,15 +133,20 @@ export const voicePage: Page = async ({ url, navigate }) => {
     errorArea.replaceChildren();
     try {
       if (editing) {
-        const updated = await api.patch<AccountResponse>('/v1/me', { voice: choice });
-        setOnboarding({ ...current, account: updated.account });
+        const updated = await api.patch<AccountResponse>('/v1/me', {
+          voice: choice,
+          care_level: getCareLevel(),
+        });
+        // The setup summary is worded from the account, so ask the API for it again.
+        setOnboarding(null);
+        setFlash(updated.notes.map((n) => n.text).join(' ') || null);
       } else {
         const next = await api.put<OnboardingResponse>('/v1/onboarding/personality', { choice });
         setOnboarding(next);
         navigate(routeForScreen(next.screen.id));
         return;
       }
-      navigate('/setup/done');
+      navigate(backTo);
     } catch (err) {
       errorArea.replaceChildren(
         errorBanner(
@@ -171,8 +178,7 @@ export const voicePage: Page = async ({ url, navigate }) => {
 
   return {
     title: editing ? 'Change how Cairn talks' : 'How Cairn talks with you',
-    step: editing ? null : 6,
-    needAMomentLabel: current.support.need_a_moment_label,
+    step: editing ? null : 7,
     content: h(
       'div',
       { class: 'content' },
@@ -205,7 +211,7 @@ export const voicePage: Page = async ({ url, navigate }) => {
               chooseForMe.label,
             )
           : null,
-        editing ? routeLink('/setup/done', 'Go back') : null,
+        editing ? routeLink(backTo, 'Go back') : null,
       ),
     ),
   };

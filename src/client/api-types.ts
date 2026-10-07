@@ -1,151 +1,161 @@
 /**
- * The parts of the Cairn API contract these screens use.
- * Source of truth: cairnguide/cairn-core api/openapi.json (OpenAPI 3.1).
- * Field names match the API exactly.
+ * Named types for the Cairn API contract, re-exported from the generated
+ * api-schema.ts (`npm run api:types`). Source of truth: cairnguide/cairn-core
+ * api/openapi.json, copied to contract/openapi.json. Field names match the API.
  */
+import type { components } from './api-schema.ts';
 
-export type SignInMethod = 'google' | 'apple' | 'email';
-export type ConsentType = 'privacy_terms' | 'trial_terms' | 'ai_notice';
-export type Voice = 'steady_direct' | 'warm_patient' | 'brisk_businesslike' | 'plain_practical';
-export type ScreenId =
-  | 'welcome'
-  | 'privacy_terms'
-  | 'trial_terms'
-  | 'ai_notice'
-  | 'declined'
-  | 'preferred_name'
-  | 'personality'
-  | 'case_handoff'
-  | 'ready'
-  | 'paused';
-export type AccountStatus =
-  | 'pending_onboarding'
-  | 'active_no_case'
-  | 'trial_active'
-  | 'read_only'
-  | 'subscribed'
-  | 'pending_deletion';
-export type OnboardingStep =
-  | 'account_created'
-  | 'privacy_terms_accepted'
-  | 'trial_terms_accepted'
-  | 'ai_notice_accepted'
-  | 'preferred_name_saved'
-  | 'complete';
+type Schemas = components['schemas'];
 
-export interface Link {
-  label: string;
-  url: string;
-}
-
-export interface Note {
-  kind: 'acknowledgment' | 'info' | 'legal' | 'crisis' | 'reminder' | 'account';
-  text: string;
-  legal_review_required?: boolean;
-  source_urls?: string[];
-  attorney_line?: string | null;
-}
-
-export interface Support {
-  need_a_moment_label: string;
-  crisis_resource: string;
-}
-
-export interface Option {
-  value: string;
-  label: string;
-  available?: boolean;
-  unavailable_reason?: string | null;
-}
-
-export interface NextStep {
-  action: string;
-  prompt: string;
-  options?: Option[] | null;
-}
-
-export interface Checkbox {
-  label: string;
-  checked?: false;
-  document_version: string;
-}
-
-export interface TextInput {
-  prefill?: string | null;
-  optional_link_label?: string | null;
-  optional_prompt?: string | null;
-}
-
-export interface Choice {
-  value: string;
-  label: string;
-  tagline?: string | null;
-  sample?: string | null;
-}
-
-export interface Screen {
-  id: ScreenId;
-  acknowledgment?: string | null;
-  body?: string[];
-  legal_notice?: string[];
-  sample_situation?: string | null;
-  checkbox?: Checkbox | null;
-  input?: TextInput | null;
-  choices?: Choice[];
-  links?: Link[];
-  ai_provider?: string | null;
-  legal_review_required?: boolean;
-}
-
-export interface AccountOut {
-  id: string;
-  email: string;
-  sign_in_method: SignInMethod | null;
-  preferred_name: string | null;
-  name_pronunciation: string | null;
-  voice: Voice;
-  status: AccountStatus;
-  onboarding_step: OnboardingStep;
-  trial_started_at: string | null;
-  trial_ends_at: string | null;
-  trial_end_date: string | null;
-  time_zone: string | null;
-  ai_label: string | null;
-}
-
-export interface OnboardingResponse {
-  account: AccountOut;
-  screen: Screen;
-  notes: Note[];
-  support: Support;
-  next_step: NextStep;
-}
-
-export interface PauseResponse {
-  screen: Screen;
-  support: Support;
-  next_step: NextStep;
-}
-
-export interface SignInOption {
-  method: SignInMethod;
-  label: string;
-  auth0_connection: string;
-}
-
-export interface WelcomeResponse {
-  acknowledgment: string;
-  methods: SignInOption[];
-  sign_in_label: string;
-  not_ready: Link;
-  notes: Note[];
-  support: Support;
-}
-
-export interface AccountResponse {
-  account: AccountOut;
-  notes: Note[];
-}
+export type AccountChatSession = Schemas['AccountChatSession'];
+export type AccountDeletionInfo = Schemas['AccountDeletionInfo'];
+export type AccountDeletionRequest = Schemas['AccountDeletionRequest'];
+export type AccountDeletionResponse = Schemas['AccountDeletionResponse'];
+export type AccountMessageIn = Schemas['AccountMessageIn'];
+export type AccountMessageResponse = Schemas['AccountMessageResponse'];
+export type AccountOut = Schemas['AccountOut'];
+export type AccountPatch = Schemas['AccountPatch'];
+export type AccountResponse = Schemas['AccountResponse'];
+export type AccountStatus = Schemas['AccountStatus'];
+export type AcknowledgmentIn = Schemas['AcknowledgmentIn'];
+export type AdultAnswerIn = Schemas['AdultAnswerIn'];
+export type Announcement = Schemas['Announcement'];
+export type AnswerIn = Schemas['AnswerIn'];
+export type AnswerOption = Schemas['AnswerOption'];
+export type AnswerState = Schemas['AnswerState'];
+export type AttorneyReferralIn = Schemas['AttorneyReferralIn'];
+export type AttorneyTrigger = Schemas['AttorneyTrigger'];
+export type BreakChangeIn = Schemas['BreakChangeIn'];
+export type BreakIn = Schemas['BreakIn'];
+export type BreakResponse = Schemas['BreakResponse'];
+export type BreakState = Schemas['BreakState'];
+export type CancelSubscriptionIn = Schemas['CancelSubscriptionIn'];
+export type CancelSubscriptionResponse = Schemas['CancelSubscriptionResponse'];
+export type CaseDeletionIn = Schemas['CaseDeletionIn'];
+export type CaseDeletionInfo = Schemas['CaseDeletionInfo'];
+export type CaseDeletionResponse = Schemas['CaseDeletionResponse'];
+export type CaseHandoffRequest = Schemas['CaseHandoffRequest'];
+export type CaseHandoffResponse = Schemas['CaseHandoffResponse'];
+export type CaseListItem = Schemas['CaseListItem'];
+export type CaseListResponse = Schemas['CaseListResponse'];
+export type CaseOut = Schemas['CaseOut'];
+export type CaseResponse = Schemas['CaseResponse'];
+export type CaseStatusResponse = Schemas['CaseStatusResponse'];
+export type CategoryStatus = Schemas['CategoryStatus'];
+export type CertificateOrderRecord = Schemas['CertificateOrderRecord'];
+export type CertificateOrderRequest = Schemas['CertificateOrderRequest'];
+export type CheckIn = Schemas['CheckIn'];
+export type CheckInIn = Schemas['CheckInIn'];
+export type Checkbox = Schemas['Checkbox'];
+export type CheckoutIn = Schemas['CheckoutIn'];
+export type CheckoutResponse = Schemas['CheckoutResponse'];
+export type CheckoutResultResponse = Schemas['CheckoutResultResponse'];
+export type Choice = Schemas['Choice'];
+export type CitationOut = Schemas['CitationOut'];
+export type ConfirmationIn = Schemas['ConfirmationIn'];
+export type ConsentType = Schemas['ConsentType'];
+export type DataExport = Schemas['DataExport'];
+export type DataExportInfo = Schemas['DataExportInfo'];
+export type DeathNotYetIn = Schemas['DeathNotYetIn'];
+export type DeceasedIdentityPatch = Schemas['DeceasedIdentityPatch'];
+export type DeceasedOut = Schemas['DeceasedOut'];
+export type DueDateLead = Schemas['DueDateLead'];
+export type EmailSignInCopy = Schemas['EmailSignInCopy'];
+export type ExportAnswer = Schemas['ExportAnswer'];
+export type ExportCase = Schemas['ExportCase'];
+export type ExportConsent = Schemas['ExportConsent'];
+export type ExportNotificationSent = Schemas['ExportNotificationSent'];
+export type ExportReminder = Schemas['ExportReminder'];
+export type ExportTask = Schemas['ExportTask'];
+export type FieldKey = Schemas['FieldKey'];
+export type FirstTaskChoice = Schemas['FirstTaskChoice'];
+export type FirstTaskIn = Schemas['FirstTaskIn'];
+export type FirstTaskResponse = Schemas['FirstTaskResponse'];
+export type HomeCaseCard = Schemas['HomeCaseCard'];
+export type HomeResponse = Schemas['HomeResponse'];
+export type InactivityAfter = Schemas['InactivityAfter'];
+export type InstitutionNotice = Schemas['InstitutionNotice'];
+export type InstitutionNoticeRequest = Schemas['InstitutionNoticeRequest'];
+export type InstitutionType = Schemas['InstitutionType'];
+export type IntakeMessageIn = Schemas['IntakeMessageIn'];
+export type IntakePreferencesIn = Schemas['IntakePreferencesIn'];
+export type IntakeSession = Schemas['IntakeSession'];
+export type IntakeTurnResponse = Schemas['IntakeTurnResponse'];
+export type JourneyPreviewResponse = Schemas['JourneyPreviewResponse'];
+export type JourneyResponse = Schemas['JourneyResponse'];
+export type KeepInTouchIn = Schemas['KeepInTouchIn'];
+export type KeepInTouchQuestion = Schemas['KeepInTouchQuestion'];
+export type KeepInTouchResponse = Schemas['KeepInTouchResponse'];
+export type Level2ChoiceIn = Schemas['Level2ChoiceIn'];
+export type Link = Schemas['Link'];
+export type LinkSignInMethodRequest = Schemas['LinkSignInMethodRequest'];
+export type MagicLinkCopy = Schemas['MagicLinkCopy'];
+export type NextStep = Schemas['NextStep'];
+export type Note = Schemas['Note'];
+export type NotificationChannel = Schemas['NotificationChannel'];
+export type NotificationChannelsIn = Schemas['NotificationChannelsIn'];
+export type NotificationFrequency = Schemas['NotificationFrequency'];
+export type NotificationFrequencyIn = Schemas['NotificationFrequencyIn'];
+export type NotificationPreferencesOut = Schemas['NotificationPreferencesOut'];
+export type NotificationSettingsPatch = Schemas['NotificationSettingsPatch'];
+export type NotificationSettingsResponse = Schemas['NotificationSettingsResponse'];
+export type OnboardingResponse = Schemas['OnboardingResponse'];
+export type OnboardingStep = Schemas['OnboardingStep'];
+export type Option = Schemas['Option'];
+export type PauseRequest = Schemas['PauseRequest'];
+export type PolicyVersions = Schemas['PolicyVersions'];
+export type PortalIn = Schemas['PortalIn'];
+export type PortalResponse = Schemas['PortalResponse'];
+export type PreButtonNotice = Schemas['PreButtonNotice'];
+export type PreferredNameIn = Schemas['PreferredNameIn'];
+export type PreviewTask = Schemas['PreviewTask'];
+export type PreviewWeek = Schemas['PreviewWeek'];
+export type ProposedAnswer = Schemas['ProposedAnswer'];
+export type ProposedAnswerIn = Schemas['ProposedAnswerIn'];
+export type Question = Schemas['Question'];
+export type ReadAloud = Schemas['ReadAloud'];
+export type RegistrationRequest = Schemas['RegistrationRequest'];
+export type Relationship = Schemas['Relationship'];
+export type ReviewLine = Schemas['ReviewLine'];
+export type ReviewResponse = Schemas['ReviewResponse'];
+export type SafetyMode = Schemas['SafetyMode'];
+export type Screen = Schemas['Screen'];
+export type ScreenControls = Schemas['ScreenControls'];
+export type ScreenId = Schemas['ScreenId'];
+export type SessionIn = Schemas['SessionIn'];
+export type SessionPolicy = Schemas['SessionPolicy'];
+export type SetupCheckInIn = Schemas['SetupCheckInIn'];
+export type SignInHelpResponse = Schemas['SignInHelpResponse'];
+export type SignInMethod = Schemas['SignInMethod'];
+export type SignInMethodsChange = Schemas['SignInMethodsChange'];
+export type SignInMethodsResponse = Schemas['SignInMethodsResponse'];
+export type SignInOption = Schemas['SignInOption'];
+export type SignOutResponse = Schemas['SignOutResponse'];
+export type StartCaseRequest = Schemas['StartCaseRequest'];
+export type StartJourneyIn = Schemas['StartJourneyIn'];
+export type StartJourneyResponse = Schemas['StartJourneyResponse'];
+export type StatusCounts = Schemas['StatusCounts'];
+export type SubscribePrompt = Schemas['SubscribePrompt'];
+export type SubscriptionOut = Schemas['SubscriptionOut'];
+export type SubscriptionTermsResponse = Schemas['SubscriptionTermsResponse'];
+export type Support = Schemas['Support'];
+export type SupportResource = Schemas['SupportResource'];
+export type SupportResourcesPage = Schemas['SupportResourcesPage'];
+export type TakeABreakIn = Schemas['TakeABreakIn'];
+export type TaskCategory = Schemas['TaskCategory'];
+export type TaskDetail = Schemas['TaskDetail'];
+export type TaskKind = Schemas['TaskKind'];
+export type TaskResponse = Schemas['TaskResponse'];
+export type TaskStatus = Schemas['TaskStatus'];
+export type TaskSummary = Schemas['TaskSummary'];
+export type TaskUpdateRequest = Schemas['TaskUpdateRequest'];
+export type TextInput = Schemas['TextInput'];
+export type TranscriptIn = Schemas['TranscriptIn'];
+export type UserRole = Schemas['UserRole'];
+export type Voice = Schemas['Voice'];
+export type VoiceChoiceIn = Schemas['VoiceChoiceIn'];
+export type WeekOut = Schemas['WeekOut'];
+export type WelcomeResponse = Schemas['WelcomeResponse'];
 
 /** RFC 9457 problem details, as returned by the API and the Worker. */
 export interface Problem {
@@ -157,4 +167,6 @@ export interface Problem {
   next_step?: NextStep;
   sign_in_method?: SignInMethod;
   document_version?: string;
+  acknowledgment?: string;
+  errors?: { field: string; message: string; type: string }[];
 }

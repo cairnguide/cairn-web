@@ -1,8 +1,10 @@
 # cairn-web
 
-The web front end for Cairn: creating an account, signing in, and account setup. It is built from the
-"Registration (UC-REG)" page of the [Cairn MVP Wireframes](https://claude.ai/artifact/Mv1JfsLPy7GsfuyBCu71md)
-and talks to the Cairn API in [cairnguide/cairn-core](https://github.com/cairnguide/cairn-core). It is hosted on
+The web front end for Cairn: creating an account and signing in, account setup, the home screen, Settings, Take a
+break, subscribing, creating a case, the journey, and its tasks. It follows the
+[Cairn MVP Wireframes](https://claude.ai/artifact/Mv1JfsLPy7GsfuyBCu71md) (the "Registration (UC-REG)" page, and the
+"Earlier draft (UC-1 to UC-13)" page for case creation, the journey, tasks, and status) and implements every use case
+the Cairn API in [cairnguide/cairn-core](https://github.com/cairnguide/cairn-core) supports. It is hosted on
 Cloudflare Workers, the same way as the marketing site [cairnguide/cairn-site](https://github.com/cairnguide/cairn-site).
 
 Cairn is an AI guide that walks a family through what has to be done after someone dies. The people using these
@@ -32,7 +34,7 @@ touch targets, a way to pause on every screen, and the 988 crisis line on every 
 
 | Part        | What it does                                                                                                                                                                                     | Where         |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| Browser app | The ten registration screens, written in TypeScript with no UI framework. Built by Vite into static files.                                                                                       | `src/client/` |
+| Browser app | Every screen in [Screens and routes](#screens-and-routes), written in TypeScript with no UI framework. Built by Vite into static files.                                                          | `src/client/` |
 | Worker      | A Cloudflare Worker that owns sign-in with Auth0, keeps the session in an encrypted cookie, protects every account page, and forwards API calls to the Cairn API with the person's access token. | `src/worker/` |
 | Shared code | Environment variable rules, security headers, and the list of protected pages, used by both.                                                                                                     | `src/shared/` |
 | Tests       | Unit tests (Vitest) and browser use case tests (Playwright) with a mock Auth0 and mock Cairn API.                                                                                                | `tests/`      |
@@ -40,30 +42,85 @@ touch targets, a way to pause on every screen, and the 988 crisis line on every 
 
 ## Screens and routes
 
-Every screen maps to one wireframe artboard, one route, and the Cairn API endpoints and use cases from
-cairn-core ([`api/README.md`](https://github.com/cairnguide/cairn-core/blob/main/api/README.md)).
+Every screen maps to the Cairn API endpoints and use cases in cairn-core
+([`api/README.md`](https://github.com/cairnguide/cairn-core/blob/main/api/README.md), use case suite of 2026-10-06:
+account 3.2.0, case creation 3.2.0, Take a break 3.2.0, Support and Crisis Plan 3.2.0, subscription 3.3.0). The API
+contract is copied to [`contract/openapi.json`](contract/openapi.json), and the TypeScript types in
+`src/client/api-schema.ts` are generated from it (`npm run api:types`), so a contract change shows up as a type error.
 
-| #    | Wireframe artboard                     | Route                      | Sign-in needed | API endpoint                                        | Use case            |
-| ---- | -------------------------------------- | -------------------------- | -------------- | --------------------------------------------------- | ------------------- |
-| 1    | Start: choose how to sign up           | `/`                        | No             | `GET /v1/welcome`                                   | UC-REG-01 to 03     |
-| 2    | Email sign-up (error and focus states) | `/signup/email`            | No             | Auth0 (`POST /auth/login`)                          | UC-REG-04           |
-|      | (sign-in lands here)                   | `/setup`                   | Yes            | `POST /v1/registrations`                            | UC-REG-02 to 05, 13 |
-| 3    | Confirm email                          | `/setup/verify`            | Yes            | Auth0 silent re-check                               | UC-REG-04           |
-| 4    | UC-REG-07 Privacy and Terms            | `/setup/privacy`           | Yes            | `POST /v1/onboarding/acknowledgments/privacy_terms` | UC-REG-07           |
-| 5    | UC-REG-08 28 free days                 | `/setup/trial`             | Yes            | `POST /v1/onboarding/acknowledgments/trial_terms`   | UC-REG-08           |
-| 6    | UC-REG-09 AI guide notice (SB 243)     | `/setup/about-cairn`       | Yes            | `POST /v1/onboarding/acknowledgments/ai_notice`     | UC-REG-09           |
-|      | "I'm not sure" on 4, 5, or 6           | `/setup/declined`          | Yes            | same endpoint with `agreed: false`                  | UC-REG-10           |
-| 7, 8 | Preferred name, typing and speaking    | `/setup/name`              | Yes            | `PUT /v1/onboarding/preferred-name`                 | UC-REG-11           |
-| 9    | Choose how Cairn talks                 | `/setup/voice`             | Yes            | `PUT /v1/onboarding/personality`                    | UC-REG-12           |
-| 10   | All set, hand-off to case creation     | `/setup/done`              | Yes            | `PATCH /v1/me` for changes                          | after UC-REG-12     |
-|      | I need a moment                        | `/moment`, `/setup/paused` | No, Yes        | `GET /v1/onboarding/need-a-moment`                  | UC-REG-14           |
-|      | Start a new case (placeholder)         | `/cases/new`               | Yes            | none yet                                            | UC-CASE-01 (next)   |
+### Signed out
 
-The API decides which screen comes next. After any sign-in, `/setup` asks the API where the person is and sends them
-there, so someone who stops halfway picks up exactly where they left off (UC-REG-13).
+| Route           | Screen                                         | API endpoint                            | Use case              |
+| --------------- | ---------------------------------------------- | --------------------------------------- | --------------------- |
+| `/`             | Start: choose how to sign up (wireframe 1)     | `GET /v1/welcome`                       | UC-REG-01 to 03       |
+| `/signup/email` | Email sign-up (wireframe 2)                    | Auth0 (`POST /auth/login`)              | UC-REG-04             |
+| `/support`      | Support resources (988, Veterans, Crisis Text) | `GET /v1/support-resources`             | Crisis plan, AC-26-10 |
+| `/sign-in-help` | I can't get into my email                      | `GET /v1/sign-in-help?method=`          | UC-REG-20             |
+| `/break`        | Take a break before sign-in (S-01)             | `GET /v1/break`                         | UC-BRK-02             |
+| `/signed-out`   | Signed out, timed out, or account deleted      | `GET /v1/welcome` (session policy copy) | UC-REG-19, UC-ACCT-01 |
 
-The earlier draft artboards on the wireframe's "Earlier draft (UC-1 to UC-13)" page (case creation, the journey,
-tasks) are not part of this change.
+### Account setup (one question per screen, in the account spec's onboarding_sequence)
+
+| Route                  | Screen                                | API endpoint                                                             | Use case                |
+| ---------------------- | ------------------------------------- | ------------------------------------------------------------------------ | ----------------------- |
+| `/setup`               | Where every sign-in lands             | `POST /v1/registrations` (time zone only)                                | UC-REG-02 to 05, 13, 18 |
+| `/setup/verify`        | Confirm email (wireframe 3)           | Auth0 silent re-check                                                    | UC-REG-04               |
+| `/setup/adult`         | Are you 18 or older?                  | `POST /v1/onboarding/adult`                                              | UC-REG-06               |
+| `/setup/under-18`      | Cairn is for adults                   | (the API's under_18 screen)                                              | UC-REG-06               |
+| `/setup/privacy`       | Privacy and Terms (wireframe 4)       | `POST /v1/onboarding/acknowledgments/privacy_terms`                      | UC-REG-07               |
+| `/setup/trial`         | 28 free days (wireframe 5)            | `POST /v1/onboarding/acknowledgments/trial_terms`                        | UC-REG-08               |
+| `/setup/about-cairn`   | AI guide notice, SB 243 (wireframe 6) | `POST /v1/onboarding/acknowledgments/ai_notice`                          | UC-REG-09               |
+| `/setup/declined`      | "I'm not sure"                        | same endpoints with `agreed: false`                                      | UC-REG-10               |
+| `/setup/name`          | Preferred name, typing or speaking    | `PUT /v1/onboarding/preferred-name`                                      | UC-REG-11               |
+| `/setup/voice`         | Choose how Cairn talks (wireframe 9)  | `PUT /v1/onboarding/personality`                                         | UC-REG-12               |
+| `/setup/notifications` | How Cairn lets you know               | `PUT /v1/onboarding/notification-channels`                               | UC-REG-15               |
+| `/setup/reminders`     | How often                             | `PUT /v1/onboarding/notification-frequency`                              | UC-REG-15               |
+| `/setup/done`          | All set, with a summary to change     | (the API's setup_complete screen)                                        | UC-REG-16               |
+| `/setup/paused`        | Distress during setup, 988, check-in  | `GET /v1/onboarding?offer_check_in=true`, `POST /v1/onboarding/check-in` | UC-REG-14, DEC-26-04    |
+
+### Signed in
+
+| Route                      | Screen                                                        | API endpoints                                                                                           | Use case                           |
+| -------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `/home`                    | Home: greeting, AI reminder, banner, subscribe prompt, cases  | `GET /v1/home`                                                                                          | UC-CASE-25, UC-REG-18, UC-SUB-01   |
+| `/break`                   | Take a break: S-02, S-02b, S-04 to S-07                       | `GET`, `POST`, `PUT`, `DELETE /v1/me/break`                                                             | UC-BRK-01, 03, 05 to 11            |
+| `/settings`                | Settings: name, pronunciation, voice, and links to the rest   | `GET`, `PATCH /v1/me`                                                                                   | UC-REG-17                          |
+| `/settings/notifications`  | Channels, how often, quiet hours, lead time, inactivity, stop | `GET`, `PATCH /v1/me/notification-preferences`                                                          | UC-REG-17                          |
+| `/settings/subscription`   | Status, payment details, past payments, cancel, undo          | `GET /v1/me/subscription`, `.../portal`, `.../confirm-payment`, `.../cancel`, `.../undo-cancel`         | UC-SUB-10 to 14, 23                |
+| `/settings/sign-in`        | Add or remove another way to sign in                          | `/auth/link` then `POST /v1/me/sign-in-methods`, `DELETE /v1/me/sign-in-methods/{method}`               | UC-REG-05                          |
+| `/settings/download`       | Download all my data (JSON)                                   | `GET /v1/me/data-export`, `GET /v1/me/data-export/file`                                                 | UC-REG-16 (data)                   |
+| `/settings/delete`         | Delete my account, one button                                 | `GET`, `POST /v1/me/deletion`                                                                           | UC-ACCT-01                         |
+| `/settings/ask`            | Ask Cairn about the account                                   | `POST /v1/me/messages`                                                                                  | Account requests in chat           |
+| `/subscription/terms`      | Price and renewal terms, then Stripe Checkout                 | `GET /v1/me/subscription/terms`, `POST /v1/me/subscription/checkout`                                    | UC-SUB-02, 03                      |
+| `/subscription/return`     | Back from Stripe                                              | `GET /v1/me/subscription/checkout-result`                                                               | UC-SUB-04, 05                      |
+| `/cases`                   | Your cases, drafts included                                   | `GET /v1/cases`                                                                                         | UC-CASE-10, 18                     |
+| `/cases/start`             | How you're connected, then a new draft                        | `POST /v1/onboarding/case-handoff`, `POST /v1/cases`                                                    | UC-CASE-01, 18, UC-3, UC-4         |
+| `/cases/:id`               | The case conversation (all intake turns)                      | `GET /v1/cases/{id}`, every `/intake/*` endpoint, `POST .../take-a-break`                               | UC-CASE-01 to 10, 14 to 17, 22, 24 |
+| `/cases/:id?edit=<field>`  | Change one answer                                             | `PUT /v1/cases/{id}/intake/answers/{field}`                                                             | UC-CASE-11                         |
+| `/cases/:id/review`        | What you told me, what we can figure out later                | `GET /v1/cases/{id}/review`                                                                             | UC-CASE-11                         |
+| `/cases/:id/preview`       | The journey that fits, Start journey, Not yet                 | `GET .../journey/preview`, `POST .../journey/start`, `POST .../journey/not-yet`                         | UC-CASE-12                         |
+| `/cases/:id/keep-in-touch` | Due date lead time, then inactivity notices                   | `GET`, `PUT /v1/cases/{id}/keep-in-touch`                                                               | UC-CASE-19                         |
+| `/cases/:id/start`         | What feels doable right now?                                  | `POST .../journey/first-task`                                                                           | UC-CASE-13                         |
+| `/cases/:id/journey`       | One next action, then the weeks; resting check-in             | `GET .../journey`, `POST .../journey/resume`                                                            | UC-9, UC-12                        |
+| `/cases/:id/status`        | Everything done, in progress, and next, by area               | `GET .../status`                                                                                        | UC-13                              |
+| `/cases/:id/tasks/:taskId` | Guidance, sources, certificates, notices, status, snooze      | `GET`, `PATCH .../tasks/{id}`, `.../certificate-order`, `.../institution-notices`, `PATCH .../deceased` | UC-10, UC-11                       |
+| `/cases/:id/delete`        | Delete now or in 7 days, or keep a case on hold               | `GET`, `POST`, `DELETE /v1/cases/{id}/deletion`                                                         | UC-END-13, UC-CASE-21              |
+
+The API decides what comes next. After any sign-in, `/setup` asks the API where the person is: unfinished setup
+resumes at the first incomplete step (UC-REG-13), and finished setup goes to `/home?session_start=1`, where
+`GET /v1/home` routes on (a break's resting screen first, a draft to resume, or home). In a case, every turn's
+`next_step.action` picks what the page shows, and the client keeps the turn's `IntakeSession` in memory and sends it
+back with the next one.
+
+### On every screen
+
+- **Take a break** in the header: one select, no confirmation (UC-BRK-01). In a case conversation it calls
+  `POST /v1/cases/{id}/take-a-break` so it saves where the person left off first.
+- **Support resources** in the header and footer, signed in or not (crisis plan AC-26-10).
+- **Read aloud** and **Read this to me** (on-device voices only), and **Text size**.
+- Signed in: **Settings** and **Sign out**. After 4 minutes 40 seconds with no activity a dialog offers "Stay signed
+  in", and at 5 minutes the person is signed out and told why (UC-REG-19, D-20). No countdown numbers are shown.
+- The footer's Privacy Policy, Terms of Use, "Cairn is an AI guide, not a human", and the 988 line.
 
 ## How it works
 
@@ -86,7 +143,8 @@ tasks) are not part of this change.
 - **Static assets.** Vite builds `src/client` into `dist/client`, and Workers Static Assets serves it with the
   headers in `public/_headers`. Unknown paths serve `index.html` so the client router can show the right screen.
 - **Worker first for sensitive paths.** `wrangler.jsonc` lists `/auth/*`, `/api/*`, `/config.json`, `/setup`,
-  `/setup/*`, `/cases/*`, and `/settings/*` in `assets.run_worker_first`. Those requests reach the Worker before
+  `/setup/*`, `/home`, `/cases`, `/cases/*`, `/settings`, `/settings/*`, `/subscription`, and `/subscription/*` in
+  `assets.run_worker_first`. Those requests reach the Worker before
   any file is served, so a signed-out visitor never receives an account page.
 - **Backend for frontend.** The browser never holds an Auth0 token. The Worker keeps the access token and refresh
   token inside an AES-256-GCM encrypted, `HttpOnly` cookie, and adds the access token when it forwards a call from
@@ -111,8 +169,17 @@ choices", and [`auth0/README.md`](https://github.com/cairnguide/cairn-core/blob/
 - **Authorization code flow with PKCE (S256), `state`, and `nonce`,** using a confidential client. The ID token is
   verified against Auth0's JWKS (issuer, audience, RS256 only, nonce).
 - **Every account page needs a session,** checked at the edge before any HTML is sent. The API proxy refuses every
-  private endpoint without one. Only four API endpoints are public, the same four the API itself allows without a
-  token: `GET /v1/welcome`, `GET /v1/sign-in-methods`, `GET /v1/policies`, and `GET /v1/onboarding/need-a-moment`.
+  private endpoint without one. Only six API endpoints are public, the same ones the API itself allows without a
+  token: `GET /v1/welcome`, `GET /v1/sign-in-methods`, `GET /v1/policies`, `GET /v1/support-resources`,
+  `GET /v1/sign-in-help`, and `GET /v1/break`.
+- **Only the email scope.** Sign-in asks Auth0 for `openid email offline_access`, never `profile`, so no name or
+  photo from Google or Apple is requested or stored (account spec D-16 and data_boundary). Cairn asks what to call
+  the person instead.
+- **Adding a second sign-in method** (UC-REG-05) goes through `/auth/link?method=`: the person signs in once more with
+  the new method (`prompt=login`), and the Worker hands that token to `POST /v1/me/sign-in-methods` while keeping the
+  original session. Accounts are never linked any other way.
+- **Signing out** tells the API (`POST /v1/me/sign-out`), revokes the refresh token, clears the cookie, ends the
+  Auth0 session, and lands on `/signed-out`, so the back button shows no case data.
 - **Session cookie:** `__Host-cairn_session`, `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, sealed
   with AES-256-GCM using a key derived from `SESSION_SECRET` by HKDF. Page JavaScript can't read it, and tampering
   makes it invalid. It lasts at most `SESSION_MAX_AGE_SECONDS` (8 hours by default).
@@ -129,8 +196,10 @@ choices", and [`auth0/README.md`](https://github.com/cairnguide/cairn-core/blob/
 ### Browser hardening
 
 - **Content Security Policy** with `default-src 'none'`, scripts, styles, and fonts only from this origin, no inline
-  code, `frame-ancestors 'none'`, and **Trusted Types required** (`require-trusted-types-for 'script'` with no
-  policies). The app builds the page with DOM methods only (`src/client/dom.ts`), and ESLint blocks `innerHTML`.
+  code, `frame-ancestors 'none'`, and **Trusted Types required** (`require-trusted-types-for 'script'`). The only
+  policy allowed, `cairn-push`, returns exactly one URL, the browser notification service worker
+  (`public/push-sw.js`). The app builds the page with DOM methods only (`src/client/dom.ts`), and ESLint blocks
+  `innerHTML`.
 - `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, and a
   `Permissions-Policy` that allows only the microphone, and only for this origin.
@@ -140,7 +209,15 @@ choices", and [`auth0/README.md`](https://github.com/cairnguide/cairn-core/blob/
 ### Personal information
 
 - **Nothing personal is stored in the browser.** No tokens, emails, or names in `localStorage`, `sessionStorage`, or
-  readable cookies. Only the text size and read-aloud preferences are kept on the device.
+  readable cookies. Only the text size and read-aloud preferences are kept on the device. The care level and the
+  `IntakeSession` from a case conversation live in memory only and are cleared on sign-out (crisis plan decision 7).
+- **Free text is shown back masked.** After a message, only the API's `masked_text` is displayed, and nothing from
+  free text or speech is saved until the person confirms Cairn's read-back. Task forms have no field for account
+  numbers. A legal name and date of birth are asked only inside the certificate task, and only if the office asks.
+- **Browser notifications** are asked for only after the person chooses them and selects Continue, never on page
+  load. The pushes carry no content: the service worker only says there is something waiting in Cairn.
+- **Payments happen on Stripe.** Cairn shows the terms, then sends the person to Stripe Checkout and the customer
+  portal. The result is read from Cairn's own status, so visiting the return page grants nothing.
 - **Only a masked email** (`d•••@example.com`) is kept in the session, for "Signed in as".
 - **The typed email never appears in a Cairn URL.** The email screen sends it in a POST body, so it stays out of
   browser history and request logs.
@@ -155,8 +232,8 @@ choices", and [`auth0/README.md`](https://github.com/cairnguide/cairn-core/blob/
   API, and the `document_version` shown is the one sent back, so the consent record matches what the person read.
   Checkboxes are never pre-checked.
 - **The AI provider is named** on the Privacy and Terms screen before anything is sent to it (UC-REG-07).
-- **Crisis resources on every page:** the footer's "In crisis? Call or text 988", the AI notice's 988 callout, and
-  "I need a moment" on every setup screen and on the start page (UC-REG-14).
+- **Crisis resources on every page:** the footer's "In crisis? Call or text 988", the AI notice's 988 callout,
+  Support resources, and Take a break. At care level 4, 988 is the first thing on the screen.
 
 ### Accessibility
 
@@ -237,7 +314,8 @@ application for this site:
 2. **Allowed Callback URLs:** `https://<your domain>/auth/callback`, plus preview URLs such as
    `https://*-cairn-web.<account>.workers.dev/auth/callback`, plus `http://localhost:8787/auth/callback` for local
    development tenants only.
-3. **Allowed Logout URLs:** `https://<your domain>/` and the same preview and local origins.
+3. **Allowed Logout URLs:** `https://<your domain>/signed-out`, `https://<your domain>/signed-out?reason=timeout`,
+   and `https://<your domain>/signed-out?reason=deleted`, with the same paths for preview and local origins.
 4. **Allowed Web Origins:** leave empty. The browser never talks to Auth0 from JavaScript.
 5. **Advanced Settings > Grant Types:** Authorization Code and Refresh Token only.
 6. **Refresh Token Rotation:** on, with reuse detection, and an absolute lifetime no longer than
@@ -296,9 +374,11 @@ Add the app's domain under **Settings > Domains & Routes**. Use a different host
 ```
 wrangler.jsonc               Cloudflare Worker config (name, assets, run_worker_first, previews)
 .env.example                 every environment variable, documented
+contract/openapi.json        copy of cairn-core api/openapi.json, the API contract
 index.html                   the page shell Vite builds from
 public/                      copied as-is into the build
   _headers                   security and cache headers (generated, see npm run check:headers)
+  push-sw.js                 browser notification service worker (content-free pushes)
   favicon.svg, robots.txt
 src/
   shared/
@@ -307,49 +387,55 @@ src/
     paths.ts                 protected pages and safe return paths
   worker/
     index.ts                 routing
-    auth.ts                  /auth/login, /auth/callback, /auth/session, /auth/logout, token refresh
+    auth.ts                  /auth/login, /auth/link, /auth/callback, /auth/session, /auth/logout, token refresh
     proxy.ts                 /api/v1/* to the Cairn API
     session.ts               the encrypted session cookie
     crypto.ts                AES-GCM sealing, PKCE, base64url
     http.ts                  responses, cookies, CSRF check
   client/
-    main.ts                  routes and startup
-    router.ts                history router, focus and title handling
+    main.ts                  routes (loaded on demand) and startup
+    router.ts                history router with :params, focus and title handling, timeout sign-out
     dom.ts                   builds DOM without HTML strings
-    api.ts, api-types.ts     calls through /api, typed from cairn-core's openapi.json
-    state.ts                 config, session summary, onboarding state (memory only)
-    onboarding.ts            API screen to route, and the 7 setup steps
+    api.ts                   calls through /api
+    api-schema.ts            generated from contract/openapi.json (npm run api:types)
+    api-types.ts             named types from api-schema.ts
+    state.ts                 config, session, onboarding, care level, intake sessions (memory only)
+    session-timeout.ts       the 5-minute inactivity warning and sign-out
+    onboarding.ts            API screen to route, and the setup steps
+    intake-fields.ts         the case questions, for Edit on the review screen
+    push.ts                  browser notification permission and subscription
     preferences.ts           text size and read aloud
     speech.ts                on-device Listen and Speak
     validation.ts            email and name checks
-    components/              header, step list, footer, buttons, callouts, fields
-    pages/                   one file per screen (see Screens and routes)
-    styles/                  tokens (light and dark), base, layout, components, pages
+    components/              header, step list, footer, buttons, callouts, fields, notes, options
+    pages/                   one file per area (see Screens and routes)
+    styles/                  tokens (light and dark), base, layout, components, pages, app
 tests/
   unit/                      Vitest: worker/, shared/, client/
-  e2e/                       Playwright use case tests, mock-server.ts, test.env
-scripts/                     check-env, check-headers, push-env, dev-mock
+  e2e/                       Playwright use case tests, mock-server.ts (Auth0, Stripe), mock-api.ts (Cairn API)
+scripts/                     api-types, check-env, check-headers, push-env, dev-mock
 .github/                     workflows, ruleset, Dependabot, PR template
 ```
 
 ## npm scripts
 
-| Script                        | What it does                                                                               |
-| ----------------------------- | ------------------------------------------------------------------------------------------ |
-| `npm run dev`                 | Build the client, then `wrangler dev` with `.env` on http://localhost:8787.                |
-| `npm run dev:mock`            | Same, with the mock Auth0 and mock API. No accounts needed.                                |
-| `npm run dev:client`          | Rebuild the client on every save (use with `dev`).                                         |
-| `npm run build`               | Build the client into `dist/client`.                                                       |
-| `npm run deploy`              | Build and `wrangler deploy` (Workers Builds normally does this).                           |
-| `npm run typecheck`           | `tsc --noEmit`.                                                                            |
-| `npm run lint`                | ESLint (with security rules), Stylelint, and Prettier.                                     |
-| `npm run format`              | Prettier, writing changes.                                                                 |
-| `npm test`                    | Unit tests.                                                                                |
-| `npm run test:unit`           | Unit tests with coverage thresholds (80% lines).                                           |
-| `npm run test:e2e`            | Browser use case tests. Starts the mock server and `wrangler dev` itself.                  |
-| `npm run check:env -- <file>` | Validate an env file without printing values.                                              |
-| `npm run check:headers`       | Fail if `public/_headers` drifted from the Worker's headers (`-- --write` regenerates it). |
-| `npm run env:push -- <file>`  | Validate an env file and upload it as Worker secrets.                                      |
+| Script                                  | What it does                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `npm run dev`                           | Build the client, then `wrangler dev` with `.env` on http://localhost:8787.                |
+| `npm run dev:mock`                      | Same, with the mock Auth0 and mock API. No accounts needed.                                |
+| `npm run dev:client`                    | Rebuild the client on every save (use with `dev`).                                         |
+| `npm run build`                         | Build the client into `dist/client`.                                                       |
+| `npm run deploy`                        | Build and `wrangler deploy` (Workers Builds normally does this).                           |
+| `npm run typecheck`                     | `tsc --noEmit`.                                                                            |
+| `npm run lint`                          | ESLint (with security rules), Stylelint, and Prettier.                                     |
+| `npm run format`                        | Prettier, writing changes.                                                                 |
+| `npm test`                              | Unit tests.                                                                                |
+| `npm run test:unit`                     | Unit tests with coverage thresholds (80% lines).                                           |
+| `npm run test:e2e`                      | Browser use case tests. Starts the mock server and `wrangler dev` itself.                  |
+| `npm run check:env -- <file>`           | Validate an env file without printing values.                                              |
+| `npm run check:headers`                 | Fail if `public/_headers` drifted from the Worker's headers (`-- --write` regenerates it). |
+| `npm run env:push -- <file>`            | Validate an env file and upload it as Worker secrets.                                      |
+| `npm run api:types [-- <openapi.json>]` | Copy a newer cairn-core contract in (optional) and regenerate `src/client/api-schema.ts`.  |
 
 ## Testing
 
@@ -369,19 +455,22 @@ npm run test:unit
 ### Use case tests (`tests/e2e`, Playwright)
 
 These run the real built client and the real Worker (`wrangler dev`), with Auth0 and the Cairn API replaced by
-`tests/e2e/mock-server.ts`, which follows cairn-core's `openapi.json` and `registration-copy.json`.
+`tests/e2e/mock-server.ts` (Auth0 and Stripe) and `tests/e2e/mock-api.ts` (the Cairn API, shaped like
+`contract/openapi.json`, with the API's rules for setup order, care levels, read-back, and the free days).
 
-| Spec                      | Covers                                                                                                          |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `welcome.spec.ts`         | UC-REG-01 welcome, footer links, UC-REG-02 and 03 Google, Apple, and cancelling                                 |
-| `email.spec.ts`           | UC-REG-04 error state, no password in Cairn, email kept out of URLs, unconfirmed email                          |
-| `account-exists.spec.ts`  | UC-REG-05 an email that already has an account                                                                  |
-| `acknowledgments.spec.ts` | UC-REG-07, 08, 09 (exact document versions recorded), UC-REG-10 "I'm not sure"                                  |
-| `name-voice.spec.ts`      | UC-REG-11 name and pronunciation, UC-REG-12 voices and "Choose for me", changing both later, UC-REG-14 distress |
-| `resume.spec.ts`          | UC-REG-13 resume after signing out, "Finish later", UC-REG-14 "I need a moment" signed in and out               |
-| `security.spec.ts`        | Edge auth gate, proxy refusals, open redirect, cookie flags, no tokens in page JavaScript, headers              |
-| `accessibility.spec.ts`   | axe WCAG 2.2 AA on every screen in light and dark mode, skip link, keyboard, text size, read aloud              |
-| `responsive.spec.ts`      | Phone width with no sideways scrolling                                                                          |
+| Spec                      | Covers                                                                                                                                                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `welcome.spec.ts`         | UC-REG-01 welcome, footer links, UC-REG-02 and 03 Google, Apple, cancelling, only the time zone sent, UC-REG-06 adult                                                                                                            |
+| `email.spec.ts`           | UC-REG-04 error state, no password in Cairn, email kept out of URLs, unconfirmed email                                                                                                                                           |
+| `account-exists.spec.ts`  | UC-REG-05 an email that already has an account                                                                                                                                                                                   |
+| `acknowledgments.spec.ts` | UC-REG-07, 08, 09 (exact document versions recorded), UC-REG-10 "I'm not sure"                                                                                                                                                   |
+| `name-voice.spec.ts`      | UC-REG-11 name (never pre-filled) and speaking, UC-REG-12 voice, UC-REG-15 channels and frequency, UC-REG-16, UC-REG-14 distress and check-in                                                                                    |
+| `resume.spec.ts`          | UC-REG-13 resume, sign out, Take a break before sign-in and during setup, Support resources signed out, UC-REG-20                                                                                                                |
+| `home-settings.spec.ts`   | Home, UC-REG-18 AI reminder, UC-REG-17 Settings, UC-REG-05 adding a sign-in, download, UC-ACCT-01, breaks on a journey (S-04 to S-07), UC-SUB-01 to 04, 13, 14                                                                   |
+| `cases.spec.ts`           | UC-CASE-01 to 09 questions, own words masked and read back, level 2 after skips, levels 3 and 4, draft break, UC-CASE-16, 17, review and Edit, preview, keep in touch, Start journey, first task, UC-10, UC-11, UC-13, UC-END-13 |
+| `security.spec.ts`        | Edge auth gate, proxy refusals, open redirect, cookie flags, no tokens in page JavaScript, headers                                                                                                                               |
+| `accessibility.spec.ts`   | axe WCAG 2.2 AA on every setup screen and the main signed-in screens, in light and dark mode, skip link, keyboard, text size, read aloud                                                                                         |
+| `responsive.spec.ts`      | Phone width with no sideways scrolling, setup and signed-in screens                                                                                                                                                              |
 
 Every use case test also fails on any browser console error, which includes CSP and Trusted Types violations.
 
@@ -423,44 +512,56 @@ Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) opens weekly upd
 These follow cairn-core's API and security rules where the wireframes and the API differ. Each is worth a look by
 product and design.
 
-1. **Password and code entry happen on Auth0, not on Cairn's email screen.** Wireframe 2 shows a password field and
-   wireframe 3 shows a 6-digit code field. cairn-core's rule is that Cairn never sees a password, and its default
-   email method is a passwordless link. So the email screen collects the address (with the wireframe's error and
-   focus states), then hands off to Auth0 with the address pre-filled. `AUTH0_EMAIL_MODE=password` switches the
-   screen's words to describe the password step (15 characters minimum, per
-   [NIST SP 800-63B-4](https://pages.nist.gov/800-63-4/sp800-63b.html)). Auth0's Universal Login pages can be themed
-   with the same colors and fonts.
-2. **"Check your email" is shown only when Auth0 says the email isn't confirmed yet** (for password accounts). Its
-   main button re-checks with Auth0 silently. "Send me a new code" is not offered because resending needs Auth0's
-   Management API. Contact support covers that for now.
-3. **The trial checkbox is not pre-checked.** Wireframe 5 shows it checked. The API requires every acknowledgment
-   checkbox to start unchecked (`Checkbox.checked` is always false).
-4. **"I'm not sure" is added** to the three acknowledgment screens (UC-REG-10), and **"I need a moment"** to every
-   setup screen and the start page (UC-REG-14). The wireframes show neither.
-5. **"Skip this for now" on the name screen is not offered.** The API requires a preferred name to continue.
-6. **Speak and Listen appear only when they can run on the device.** Many browsers send audio or text to a cloud
-   service, which would break the wireframe's promise that the recording is never kept.
-7. **Go back is not offered on the voice screen,** because the API only moves forward once a name is saved. Earlier
-   acknowledgment screens show "You have already agreed to this" when revisited.
-8. **Google and Apple buttons show a letter, not the logo.** The official artwork must be added under each
-   provider's brand rules ([Google](https://developers.google.com/identity/branding-guidelines),
-   [Apple](https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple)).
-9. **"Start a new case" opens a short placeholder page.** Case creation on the web is the next piece of work.
-10. **A Sign out button** is in the header whenever someone is signed in.
-11. **The voice list when changing it later** mirrors cairn-core's `voices/manifest.yaml`, because the API only sends
+1. **Password and code entry happen on Auth0, not on Cairn's email screen.** Cairn never sees a password, and the
+   default email method is a passwordless link. The email screen collects the address, then hands off to Auth0 with
+   it pre-filled. `AUTH0_EMAIL_MODE=password` switches the screen's words to describe the password step (15
+   characters minimum, per [NIST SP 800-63B-4](https://pages.nist.gov/800-63-4/sp800-63b.html)).
+2. **"Check your email" is shown only when Auth0 says the email isn't confirmed yet.** "Send me a new code" is not
+   offered because resending needs Auth0's Management API.
+3. **Checkboxes are never pre-checked** (acknowledgments and subscription terms).
+4. **"I need a moment" became Take a break.** cairn-core removed `GET /v1/onboarding/need-a-moment` with the v3
+   specs (BRK-D-01). Take a break is in the header on every screen, and the setup step list links to it too.
+5. **The setup steps follow the account spec,** not the earlier wireframe: an adult question (UC-REG-06) comes first,
+   and notification channels and frequency (UC-REG-15) come after the voice, before "All set". The step list has
+   nine steps.
+6. **No name from Google or Apple.** The name screen starts empty (D-16). The earlier build pre-filled it.
+7. **Speak and Listen appear only when they can run on the device.** Many browsers send audio or text to a cloud
+   service, which would break the promise that the recording is never kept. This applies to case answers too
+   (UC-CASE-22), which are always sent to the API as a transcript to confirm first.
+8. **Edit on the review screen** uses a client copy of the case questions (`src/client/intake-fields.ts`, mirroring
+   cairn-core's case copy), because `GET /v1/cases/{id}/review` sends only each field's prompt. Questions the API
+   sent during the visit take precedence.
+9. **Labels the API sends only as values** (notification frequency, due date lead time, inactivity notices,
+   attorney referral reasons, task status buttons, institution types) are client copy. They should come from the API
+   or be reviewed with the rest of the copy.
+10. **Google and Apple buttons show a letter, not the logo.** The official artwork must be added under each
+    provider's brand rules ([Google](https://developers.google.com/identity/branding-guidelines),
+    [Apple](https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple)).
+11. **The case list for fiduciaries** (wireframe UC-13 desktop sidebar) is a plain `/cases` list. cairn-core notes the
+    fiduciary case list is not built yet (decision 7 in its API README).
+12. **The legal name step** sits inside the certificate task as an optional "only if the office asks" section, since
+    `PATCH /v1/cases/{id}/deceased` is just in time and is refused on drafts.
+13. **The voice list when changing it later** mirrors cairn-core's `voices/manifest.yaml`, because the API only sends
     the choices during setup.
 
 ## Copy that needs product and legal review
 
-The acknowledgment text, checkbox labels, crisis wording, voice samples, and welcome notes come from the API and are
-reviewed there. These strings were written for this app and need the same review:
+Acknowledgments, checkbox labels, crisis wording, voice samples, break screens, subscription terms, task guidance,
+and every Cairn message come from the API and are reviewed there. These strings were written for this app and need
+the same review:
 
 - Email screen: "Next, we will email you a link to sign in. There is no password to remember. The link works for 15
   minutes." and the password-mode version.
 - "Check your email" screen body and "I have confirmed my email".
 - "Cairn's AI guide is provided by {provider}. It is named here before anything you share is sent to it."
 - "You have already agreed to this. It is saved." and the account-exists safety note.
-- The "Start a new case" placeholder message.
+- "We only ask yes or no. We never ask for your birthday or age." on the adult question.
+- The notification, lead time, inactivity, and quiet hours labels in Settings (`src/client/pages/settings.ts`).
+- The attorney referral reasons and "The death has not happened yet" on the case page (`src/client/pages/intake.ts`).
+- Task status buttons, institution types, and the legal name note (`src/client/pages/task.ts`).
+- The fallback session timeout, signed-out, and account-deleted messages (`src/client/session-timeout.ts`,
+  `src/client/pages/other.ts`).
+- The browser notification text in `public/push-sw.js`.
 - Validation messages other than the wireframe's email message.
 
 ## Contributing
@@ -470,13 +571,20 @@ reviewed there. These strings were written for this app and need the same review
 3. Open a pull request into `main` and fill in the template. It can merge once **All checks passed** is green.
 4. After changing `src/shared/security-headers.ts`, run `npm run check:headers -- --write` and commit `public/_headers`.
 5. After adding an environment variable, add it to `src/shared/env.ts`, `.env.example`, and the table above.
+6. When cairn-core's contract changes, run `npm run api:types -- ../cairn-core/api/openapi.json`, fix any type
+   errors, and update `tests/e2e/mock-api.ts` to match.
 
 Report security problems privately, as described in [SECURITY.md](SECURITY.md).
 
 ## References
 
-- Wireframes: [Cairn MVP Wireframes](https://claude.ai/artifact/Mv1JfsLPy7GsfuyBCu71md), page "Registration (UC-REG)"
-- Cairn API and Auth0 setup: [cairnguide/cairn-core](https://github.com/cairnguide/cairn-core) (`api/README.md`, `auth0/README.md`, `api/openapi.json`)
+- Wireframes: [Cairn MVP Wireframes](https://claude.ai/artifact/Mv1JfsLPy7GsfuyBCu71md), pages "Registration (UC-REG)"
+  and "Earlier draft (UC-1 to UC-13)"
+- Cairn API and Auth0 setup: [cairnguide/cairn-core](https://github.com/cairnguide/cairn-core) (`api/README.md`, `auth0/README.md`, `api/openapi.json`, and the use case specs in `database/docs/`)
+- [openapi-typescript](https://openapi-ts.dev/) (generates `src/client/api-schema.ts`)
+- Stripe: [Checkout](https://docs.stripe.com/payments/checkout), [Customer portal](https://docs.stripe.com/customer-management)
+- MDN: [Push API](https://developer.mozilla.org/docs/Web/API/Push_API), [Notification.requestPermission()](https://developer.mozilla.org/docs/Web/API/Notification/requestPermission_static), [`<dialog>`](https://developer.mozilla.org/docs/Web/HTML/Element/dialog)
+- [WCAG 2.2 success criterion 2.2.1, Timing Adjustable](https://www.w3.org/WAI/WCAG22/Understanding/timing-adjustable.html)
 - Marketing site and hosting pattern: [cairnguide/cairn-site](https://github.com/cairnguide/cairn-site)
 - Cloudflare: [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/),
   [`run_worker_first`](https://developers.cloudflare.com/workers/static-assets/binding/),

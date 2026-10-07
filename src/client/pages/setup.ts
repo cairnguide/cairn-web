@@ -8,6 +8,9 @@
  * - the email already has an account made another way (409 account_exists):
  *   offer that method as the main button
  * - an unsupported sign-in method (403): explain and offer to start again
+ *
+ * A finished account goes to the home screen, which routes a returning
+ * sign-in on (UC-REG-18): a break first, a draft to resume, or home.
  */
 import { ApiError, api } from '../api.ts';
 import type { OnboardingResponse, SignInMethod } from '../api-types.ts';
@@ -15,7 +18,7 @@ import { h } from '../dom.ts';
 import { actions, callout, textButton } from '../components/controls.ts';
 import { routeForScreen } from '../onboarding.ts';
 import type { Page, View } from '../router.ts';
-import { getSession, setOnboarding, signOut } from '../state.ts';
+import { setOnboarding, signOut } from '../state.ts';
 
 const PROVIDER_LABELS: Record<SignInMethod, string> = {
   google: 'Google',
@@ -34,8 +37,9 @@ function timeZone(): string | undefined {
 
 function accountExistsView(error: ApiError): View {
   const method = error.problem.sign_in_method ?? 'email';
-  const option = error.problem.next_step?.options?.[0];
-  const label = option?.label ?? `Sign in with ${PROVIDER_LABELS[method]}`;
+  const options = error.problem.next_step?.options ?? [];
+  const label = options[0]?.label ?? `Sign in with ${PROVIDER_LABELS[method]}`;
+  const link = options.find((o) => o.value === 'link_after_sign_in');
   return {
     title: 'You already have an account',
     step: null,
@@ -57,6 +61,22 @@ function accountExistsView(error: ApiError): View {
           },
           label,
         ),
+        link
+          ? h(
+              'button',
+              {
+                type: 'button',
+                class: 'button-secondary',
+                onClick: () => {
+                  // UC-REG-05: sign in the original way first, then add this way in Settings.
+                  void signOutThen(
+                    `/auth/login?method=${method}&returnTo=${encodeURIComponent('/settings/sign-in')}`,
+                  );
+                },
+              },
+              link.label,
+            )
+          : null,
         textButton('Go back', () => void signOut()),
       ),
       callout(
@@ -78,21 +98,26 @@ async function signOutThen(next: string): Promise<void> {
     credentials: 'same-origin',
     headers: { 'X-Cairn-Client': 'web', 'Content-Type': 'application/json' },
     body: '{}',
-  });
+  }).catch(() => undefined);
   window.location.assign(next);
 }
 
 export const setupPage: Page = async ({ navigate }) => {
-  const session = getSession();
+  // Only the browser's time zone. The API refuses anything else (data_boundary.enforcement).
   const body: Record<string, string> = {};
   const zone = timeZone();
   if (zone) body.time_zone = zone;
-  if (session.name_from_provider) body.name_from_provider = session.name_from_provider;
 
   try {
     const response = await api.post<OnboardingResponse>('/v1/registrations', body);
     setOnboarding(response);
-    navigate(routeForScreen(response.screen.id), { replace: true });
+    // Finished setup (even with no case yet) goes home, unless a changed notice needs agreeing again.
+    const done =
+      response.account.onboarding_step === 'complete' &&
+      (response.screen.id === 'ready' || response.screen.id === 'setup_complete');
+    navigate(done ? '/home?session_start=1' : routeForScreen(response.screen.id), {
+      replace: true,
+    });
     return null;
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;

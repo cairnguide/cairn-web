@@ -10,8 +10,9 @@
  * - only a short list of headers crosses in either direction (no cookies go to
  *   the API and none come back).
  *
- * A few API endpoints work without signing in (the welcome screen, sign-in
- * methods, policy versions, and "I need a moment"). Everything else needs a
+ * A few API endpoints work without signing in: the welcome screen, sign-in
+ * methods, policy versions, Support resources, "I can't get into my email",
+ * and Take a break before signing in (the same list the API allows). Everything else needs a
  * session, and every write passes the same-origin check.
  */
 import type { AppConfig } from '../shared/env.ts';
@@ -23,7 +24,9 @@ const PUBLIC_ENDPOINTS = new Set([
   'GET /v1/welcome',
   'GET /v1/sign-in-methods',
   'GET /v1/policies',
-  'GET /v1/onboarding/need-a-moment',
+  'GET /v1/support-resources',
+  'GET /v1/sign-in-help',
+  'GET /v1/break',
 ]);
 
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
