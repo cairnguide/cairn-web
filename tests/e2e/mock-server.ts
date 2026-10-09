@@ -147,6 +147,7 @@ async function handleAuth0(req: IncomingMessage, res: ServerResponse, url: URL):
   if (url.pathname === '/authorize') {
     const q = url.searchParams;
     const redirectUri = q.get('redirect_uri') ?? '';
+    const safeRedirectUri = safeLocalRedirectTarget(redirectUri);
     const state = q.get('state') ?? '';
     if (
       q.get('client_id') !== CLIENT_ID ||
@@ -158,13 +159,13 @@ async function handleAuth0(req: IncomingMessage, res: ServerResponse, url: URL):
     }
     if (control.cancelNext) {
       control.cancelNext = false;
-      redirect(res, `${redirectUri}?error=access_denied&state=${state}`);
+      redirect(res, `${safeRedirectUri}?error=access_denied&state=${state}`);
       return true;
     }
     let identity: Identity;
     if (q.get('prompt') === 'none') {
       if (!lastIdentity) {
-        redirect(res, `${redirectUri}?error=login_required&state=${state}`);
+        redirect(res, `${safeRedirectUri}?error=login_required&state=${state}`);
         return true;
       }
       identity = { ...lastIdentity, email_verified: !control.unverified.has(lastIdentity.email) };
